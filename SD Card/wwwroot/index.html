@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<!-- 
+			Example of Tabs with Automatic Activation
+			https://www.w3.org/WAI/ARIA/apg/patterns/tabs/examples/tabs-automatic/ 
+		-->
+	<title>Pico W</title>
+	<meta http-equiv="Content-type" content="text/html;charset=utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="css/main.css" />
+</head>
+
+<body>
+	<h1>Pico W HTTP Server</h1>
+	<br />
+	<p class="dotted">This is a Pico W running an HTTP server with CircuitPython.</p>
+	<br />
+
+	<div class="tabs">
+		<h3 id="tablist-1">Options</h3>
+		<div role="tablist" aria-labelledby="tablist-1" class="automatic">
+			<button id="tab-1" type="button" role="tab" aria-selected="true" aria-controls="tabpanel-1">
+				<span class="focus">Speech Timer</span>
+			</button>
+			<button id="tab-3" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-2" tabindex="-1">
+				<span class="focus">Clock</span>
+			</button>
+			<button id="tab-3" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-3" tabindex="-1">
+				<span class="focus">Pico LED</span>
+			</button>
+			<button id="tab-4" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-4" tabindex="-1">
+				<span class="focus">Information</span>
+			</button>
+			<button id="tab-5" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-5" tabindex="-1">
+				<span class="focus">Test</span>
+			</button>
+		</div>
+
+		<div id="tabpanel-1" role="tabpanel" tabindex="0" aria-labelledby="tab-1" class="is-hidden">
+			<div class="form_div">
+				<h2>Speech Timer</h2>
+				<br />
+				<form accept-charset="utf-8" method="POST">
+					<input type="hidden" name="TAB" value="1" />
+					<label for="MIN_TIME">MIN Time:</label><input type="text" id="MIN_TIME" name="MIN_TIME" value="{min_time}" /><br />
+					<label for="MAX_TIME">MAX Time:</label><input type="text" id="MAX_TIME" name="MAX_TIME" value="{max_time}" /><br />
+					<br />
+					<button class="button" name="SPEECH_TIMER" value="{timer_button_text}" type="submit">{timer_button_text}</button>
+				</form>
+			</div>
+		</div>
+		<div id="tabpanel-2" role="tabpanel" tabindex="0" aria-labelledby="tab-2" class="is-hidden">
+			<div class="form_div">
+				<h2>Clock</h2>
+				<br />
+				<form accept-charset="utf-8" method="POST">
+					<input type="hidden" name="TAB" value="2" />
+					<label for="RED">RED:</label><input type="text" id="RED" name="RED" value="{neo_red}" /><br />
+					<label for="GREEN">GREEN:</label><input type="text" id="GREEN" name="GREEN"
+						value="{neo_green}" /><br />
+					<label for="BLUE">BLUE:</label><input type="text" id="BLUE" name="BLUE" value="{neo_blue}" /><br />
+					<button class="button" name="CLOCK" value="" type="submit">Update</button>
+				</form>
+			</div>
+		</div>
+		<div id="tabpanel-3" role="tabpanel" tabindex="0" aria-labelledby="tab-3" class="is-hidden">
+			<div class="form_div">
+				<h2>Control the LED on the Pico W</h2>
+				<br />
+				<form accept-charset="utf-8" method="POST">
+					<input type="hidden" name="TAB" value="3" />
+					<button class="button" name="LED" value="ON" type="submit">LED ON</button><br />
+					<button class="button" name="LED" value="OFF" type="submit">LED OFF</button>
+				</form>
+			</div>
+		</div>
+		<div id="tabpanel-4" role="tabpanel" tabindex="0" aria-labelledby="tab-4" class="is-hidden">
+			<div class="form_div">
+				<h2>Pico Information</h2>
+				<br />
+				<p>
+					<span class="info_label">Server Directory:</span><span class="info_value">{server_folder}</span><br />
+					<span class="info_label">CPU Temperature:</span><span class="info_value">{cpu_temp_c}&degC / {cpu_temp_f}&degF</span><br />
+					<span class="info_label">CPU Frequency:</span><span class="info_value">{cpu_freq} Hz</span><br />
+					<span class="info_label">Last Reset Reason:</span><span class="info_value">{reset_reason}</span><br />
+					<span class="info_label">UID:</span><span class="info_value">{cpu_uid}</span><br />
+					<span class="info_label">Voltage:</span><span class="info_value">{cpu_voltage} V</span><br />
+					<span class="info_label">Memory Total:</span><span class="info_value">{mem_total} bytes</span><br />
+					<span class="info_label">Memory Free:</span><span class="info_value">{mem_percent_free}% {mem_free} bytes</span><br />
+					<span class="info_label">Memory Used:</span><span class="info_value">{mem_percent_used}% {mem_used} bytes</span></span><br />
+					
+				</p>
+				<br />
+				<form accept-charset="utf-8" method="POST">
+					<input type="hidden" name="TAB" value="4" />
+					<button class="button" name="INFO" value="REFRESH" type="submit">REFRESH</button>
+				</form>
+			</div>
+		</div>
+		<div id="tabpanel-5" role="tabpanel" tabindex="0" aria-labelledby="tab-5" class="is-hidden">
+			<div class="form_div">
+				<h2>Test the Neopixels</h2>
+				<br />
+				<form accept-charset="utf-8" method="POST">
+					<input type="hidden" name="TAB" value="5" />
+					<button class="button" name="TEST" value="TEST" type="submit">TEST</button>
+				</form>
+			</div>
+		</div>
+	</div>
+
+	<br />
+	<p>This server has served {visits} requests.</p>
+
+	<script src="js/tabs.js"></script>
+	<script>
+		selected_tab = {selected_tab};
+	</script>
+</body>
+
+</html>
