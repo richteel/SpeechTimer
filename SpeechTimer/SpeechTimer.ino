@@ -50,7 +50,9 @@
 
 
 #include <Arduino.h>
+#include "tests.h"
 #include "DebugPrint.h"
+#include "Clock_SdCard.h"
 
 void setup() {
   D_SerialBegin(115200);
@@ -63,6 +65,9 @@ void setup() {
   */
   while (DEBUG && !Serial)
     ;
+  
+  runTests();
+  D_println("--- DONE ---");
 }
 
 void loop() {

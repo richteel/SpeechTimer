@@ -1,0 +1,12 @@
+C++ Namespaces
+	https://luckyresistor.me/2014/10/31/how-and-why-to-use-namespaces/
+
+Pointers
+	https://www.w3schools.com/cpp/cpp_pointers_dereference.asp
+
+WiFi
+	https://randomnerdtutorials.com/esp32-useful-wi-fi-functions-arduino/
+	https://www.penguintutor.com/programming/arduino-rp2040-memory
+	https://startingelectronics.org/tutorials/arduino/ethernet-shield-web-server-tutorial/SD-card-AJAX-XML-web-server/
+	https://microcontrollerslab.com/esp32-rest-api-web-server-get-post-postman/
+	https://lastminuteengineers.com/creating-esp32-web-server-arduino-ide/
