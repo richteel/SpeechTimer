@@ -1,0 +1,41 @@
+INFO	--- Lost WiFi Connection ---
+INFO	*** Connected to WiFI ***
+INFO	               SSID:	TeelSys
+INFO	         IP Address:	10.140.1.52
+INFO	            Gateway:	10.140.1.1
+INFO	Connection Attempts:	2
+INFO	    Connection Time:	19883 ms
+INFO	  Current Loop Time:	8411 ms
+
+
+
+=== STARTING TESTS ===
+** START: SD Card Tests **
+Insert the SD Card and send a char through the serial port.
+	1	Test if card is present:	PASS
+	2	Test File Exists (config.txt):	PASS
+	3	Test File Does Not Exist (clowns.txt):	PASS
+Remove the SD Card and send a char through the serial port.
+	4	Test if card is removed:	PASS
+	5	Test File Does Not Exist (config.txt):	PASS
+Insert the SD Card and send a char through the serial port.
+	6	Test if card is present:	PASS
+	7	Test File Exists (config.txt):	PASS
+	8	Test Folder Exists (wwwroot):	PASS
+	9	Read file (config.txt):	PASS
+	10	Load config file (config.txt):	PASS
+	11	Save config file (test.txt):	PASS
+	12	Load config file (test.txt):	PASS
+INFO	Test Entry
+	13	Write to log file (samtest.log):	PASS
+** START: Wi-Fi Tests **
+		BEFORE: 2000-01-01T00:00:34.000000+00:00
+	14	Get internet time:	PASS
+		URL for Time: http://worldtimeapi.org/api/ip/?
+		AFTER: 2023-09-23T16:06:40.000000-04:00
+		Time String -> 16:06:40
+	15	Get time string:	PASS
+
+RESULT: All 15 Tests Passed!
+=== END TESTS ===
+--- DONE ---
