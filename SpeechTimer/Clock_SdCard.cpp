@@ -35,6 +35,31 @@ void Clock_SdCard::clearConfig() {
   }
 }
 
+uint Clock_SdCard::countCharInFile(const char *fileFullName, char charToCount) {
+  uint charCount = 0;
+
+  File file = SD.open(fileFullName, FILE_READ);
+
+  if (!file) {
+    return charCount;
+  }
+
+  while (file.available()) {
+    char ch = file.read();
+    if (ch == charToCount) {
+      charCount++;
+    }
+  }
+
+  file.close();
+
+  return charCount;
+}
+
+uint Clock_SdCard::countLinesInFile(const char *fileFullName) {
+  return countCharInFile(fileFullName, '\n');
+}
+
 void Clock_SdCard::end() {
   SD.end();
 }
@@ -55,8 +80,7 @@ bool Clock_SdCard::isCardPresent() {
   // If card detect pin is present, use it to determine if there is a sd card.
   if (_cd != NO_PIN) {
     cardPresent = digitalRead(_cd);
-    // If there is no card but the SD card was initialized, call end.
-    // Else if there is a card and the SD card was not initialized, call begin
+    // If there is no card but the SD card was initialized, call SD.end.
     if (!cardPresent && _initialized) {
       SD.end();
       _initialized = false;
@@ -158,4 +182,23 @@ bool Clock_SdCard::saveConfig(const char *fileFullName) {
   file.close();
 
   return true;
+}
+
+void Clock_SdCard::writeLogEntry(const char *fileFullName, const char *message, const char *errorlevel) {
+  char buffer[strlen(message) + 20];
+  int bufLen = strlen(buffer) + strlen(errorlevel) + 2;
+
+  strcpy(buffer, errorlevel);
+  strcat(buffer, "\t\0");
+
+  if (bufLen < sizeof(buffer) - 1) {
+    strcat(buffer, message);
+  } else {
+    strcpy(buffer, message);
+  }
+
+  File logFile = SD.open(fileFullName, FILE_WRITE);
+  logFile.println(buffer);
+  logFile.close();
+  D_println(buffer);
 }
