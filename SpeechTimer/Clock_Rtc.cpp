@@ -82,14 +82,24 @@ long Clock_Rtc::getInternetTime(long timeoutMs) {
     }
   }
 
+  setTime((uint32_t)unixtime);
   if (!foundResponseBody) {
     _sdcard->writeLogEntry(_logfile, "Timed out waiting for response.", LOG_ERROR);
-  }
-
-  setTime((uint32_t)unixtime);
-  adjustTime(_lastInternetTime.raw_offset + ((millis() - _internet_update_previousMillis) / 1000));
-  if (_lastInternetTime.dst) {
-    adjustTime(_lastInternetTime.dst_offset);
+  } else if (!deserializedData) {
+    _sdcard->writeLogEntry(_logfile, "Time failed to update from the internet.", LOG_ERROR);
+  } else {
+    // adjustTime(_lastInternetTime.raw_offset + ((millis() - _internet_update_previousMillis) / 1000));
+    adjustTime(_lastInternetTime.raw_offset);
+    if (_lastInternetTime.dst) {
+      adjustTime(_lastInternetTime.dst_offset);
+    }
+    char buffer[384];
+    sprintf(buffer, "Updated DateTime from: %s", timeUpdateUrl);
+    _sdcard->writeLogEntry(_logfile, buffer, LOG_INFO);
+    char dtBuffer[40];
+    getIsoDateString(dtBuffer);
+    sprintf(buffer, "Updated DateTime is: %s", dtBuffer);
+    _sdcard->writeLogEntry(_logfile, buffer, LOG_INFO);
   }
 
   return now();
@@ -109,6 +119,10 @@ void Clock_Rtc::getTimeString(char stringBuffer[10]) {
   datetime_t dt;
   unixToDatetime_t(&dt, now());
   sprintf(stringBuffer, "%02d:%02d:%02d", dt.hour, dt.min, dt.sec);  // 2023-09-23T10:01:25.238839-04:00
+}
+
+bool Clock_Rtc::timeIsSet() {
+  return (timeStatus() == timeSet);
 }
 
 void Clock_Rtc::unixToDatetime_t(datetime_t *mydate, uint32_t unixtime) {
@@ -164,7 +178,8 @@ void Clock_Rtc::unixToDatetime_t(datetime_t *mydate, uint32_t unixtime) {
 
 // ***** PRIVATE *****
 bool Clock_Rtc::deserializeInternetTime(const char *input, size_t inputLength) {
-  StaticJsonDocument<768> doc;
+  // StaticJsonDocument<768> doc;
+  StaticJsonDocument<1024> doc;
 
   DeserializationError error = deserializeJson(doc, input, inputLength);
 

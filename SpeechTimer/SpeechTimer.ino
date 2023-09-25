@@ -52,7 +52,22 @@
 #include <Arduino.h>
 #include "tests.h"
 #include "DebugPrint.h"
+
 #include "Clock_SdCard.h"
+#include "Clock_Wifi.h"
+#include "Clock_Rtc.h"
+#include "Clock_Output.h"
+
+#if TESTING
+#else
+Clock_SdCard sd = Clock_SdCard();
+Clock_Wifi wifi = Clock_Wifi(&sd);
+Clock_Rtc rtc = Clock_Rtc(&sd, &wifi);
+Clock_Output clockOutput = Clock_Output();
+
+#define UPDATE_DISPLAY_MILLIS 250
+unsigned long previousUpdateDisplayMillis = 0;
+#endif
 
 void setup() {
   D_SerialBegin(115200);
@@ -65,11 +80,36 @@ void setup() {
   */
   while (DEBUG && !Serial)
     ;
-  
+
   runTests();
-  D_println("--- DONE ---");
+#if TESTING
+#else
+  clockOutput.begin();
+  rtc.begin();
+  sd.begin();
+  wifi.begin();
+
+  rtc.getInternetTime();
+#endif
 }
 
 void loop() {
-  
+#if TESTING
+#else
+  if (millis() - previousUpdateDisplayMillis > UPDATE_DISPLAY_MILLIS) {
+    if (!rtc.timeIsSet()) {
+      rtc.getInternetTime();
+    }
+
+    previousUpdateDisplayMillis = millis();
+
+    char currentTime[10] = {};
+    rtc.getTimeString(currentTime);
+
+    clockOutput.updateTime(currentTime);
+
+    // Serial.printf("Free Heap: %d\n", rp2040.getFreeHeap()); // 181,996 of 260K
+  }
+
+#endif
 }

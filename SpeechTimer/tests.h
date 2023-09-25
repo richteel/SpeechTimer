@@ -1,7 +1,7 @@
 #ifndef TESTS
 #define TESTS
 
-#define TESTING 1  // SET TO 0 OUT TO REMOVE TESTS
+#define TESTING 0  // SET TO 0 OUT TO REMOVE TESTS
 #define PASS "PASS"
 #define FAIL "FAIL"
 
@@ -10,6 +10,7 @@
 #include "Clock_SdCard.h"
 #include "Clock_Wifi.h"
 #include "Clock_Rtc.h"
+#include "Clock_Output.h"
 
 uint currentTest = 0;
 uint testCountFail = 0;
@@ -18,6 +19,7 @@ uint testCountFail = 0;
 Clock_SdCard sd = Clock_SdCard();
 Clock_Wifi wifi = Clock_Wifi(&sd);
 Clock_Rtc rtc = Clock_Rtc(&sd, &wifi);
+Clock_Output clockOutput = Clock_Output();
 
 void printDateTime() {
   char timeString[40];
@@ -26,7 +28,7 @@ void printDateTime() {
   Serial.printf("\t\t%s\n", timeString);
 }
 
-void printDateTime(const char *message) {
+void printDateTime(const char* message) {
   char timeString[40];
 
   rtc.getIsoDateString(timeString);
@@ -34,6 +36,7 @@ void printDateTime(const char *message) {
 }
 
 void testSetup() {
+  clockOutput.begin();
   rtc.begin();
   sd.begin();
   wifi.begin();
@@ -163,6 +166,12 @@ const char* testRtc_getTimeString(bool assertValue) {
   } else {
     testCountFail++;
   }
+
+  char currentTime[10] = {};
+  rtc.getTimeString(currentTime);
+
+  clockOutput.updateTime(currentTime);
+
   return result;
 }
 

@@ -49,7 +49,6 @@ public:
 
 private:
   pin_size_t _miso, _cs, _sck, _mosi, _cd;
-  spi_inst_t *_spi;
   bool _initialized = false;
 };
 

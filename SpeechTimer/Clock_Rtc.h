@@ -25,6 +25,8 @@ public:
 
   void getTimeString(char stringBuffer[10]);
 
+  bool timeIsSet(void);
+
   void unixToDatetime_t(datetime_t *mydate, uint32_t unixtime);
 
   char timeUpdateUrl[256] = {};
