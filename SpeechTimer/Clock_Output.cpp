@@ -7,6 +7,7 @@ Clock_Output::Clock_Output() {
 bool Clock_Output::begin() {
   _clock = Clock_Clock();
   _clock.begin();
+  _oleDisplay.begin();
 
   return true;
 }
