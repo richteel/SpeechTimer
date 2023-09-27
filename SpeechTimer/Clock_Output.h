@@ -11,6 +11,8 @@ public:
 
   bool begin();
 
+  void updateIpAddress(const char *ipAddress);
+
   void updateTime(const char *time);
 private:
   Clock_Clock _clock;

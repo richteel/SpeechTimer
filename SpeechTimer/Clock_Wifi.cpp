@@ -68,6 +68,10 @@ void Clock_Wifi::checkConnection(int maxRetries) {
   }
 }
 
+char *Clock_Wifi::getIpAddress() {
+  return ipAddress;
+}
+
 bool Clock_Wifi::isConnectedToInternet() {
   bool connected = false;
 
@@ -104,6 +108,7 @@ void Clock_Wifi::checkConnectionStationMode() {
       _sdcard->writeLogEntry(_logfile, buffer, LOG_INFO);
       sprintf(buffer, "            Gateway:\t%s", WiFi.gatewayIP().toString().c_str());
       _sdcard->writeLogEntry(_logfile, buffer, LOG_INFO);
+      strcpy(ipAddress, WiFi.localIP().toString().c_str());
       _wifi_is_connected = true;
       activity = true;
     }

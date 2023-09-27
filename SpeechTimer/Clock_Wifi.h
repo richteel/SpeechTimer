@@ -14,9 +14,13 @@ public:
 
   void checkConnection(int maxRetries = 1);
 
+  char *getIpAddress();
+
   bool isConnectedToInternet();
 
   WiFiClient wifiClient;
+
+  char ipAddress[16];
 
 private:
   Clock_SdCard *_sdcard;

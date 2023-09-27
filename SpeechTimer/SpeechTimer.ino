@@ -88,7 +88,7 @@ void setup() {
   rtc.begin();
   sd.begin();
   wifi.begin();
-
+  clockOutput.updateIpAddress(wifi.ipAddress);
   rtc.getInternetTime();
 #endif
 }
