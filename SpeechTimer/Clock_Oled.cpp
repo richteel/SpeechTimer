@@ -11,7 +11,7 @@ Clock_Oled::Clock_Oled(uint8_t w, uint8_t h, TwoWire *twi, int8_t rst_pin, uint3
 
 bool Clock_Oled::begin(uint8_t switchvcc, uint8_t i2caddr, bool reset, bool periphBegin) {
   if (!_display.begin(switchvcc, i2caddr, reset, periphBegin)) {
-    Serial.println(F("SSD1306 allocation failed"));
+    D_println(F("SSD1306 allocation failed"));
     return _displaySetupInit;
   }
 

@@ -48,6 +48,7 @@
     IR Remote - GND and 3V (Pin 36)
 */
 
+// #define NO_SERIAL
 
 #include <Arduino.h>
 #include "tests.h"
@@ -81,9 +82,15 @@ void setup() {
   while (DEBUG && !Serial)
     ;
 
-  runTests();
 #if TESTING
+  runTests();
 #else
+  // WiFi does not work unless serial is enabled
+  if (!DEBUG) {
+    Serial.begin(9600);
+    delay(1000);
+  }
+
   clockOutput.begin();
   rtc.begin();
   sd.begin();
@@ -103,12 +110,14 @@ void loop() {
 
     previousUpdateDisplayMillis = millis();
 
-    char currentTime[10] = {};
-    rtc.getTimeString(currentTime);
+    if (rtc.timeIsSet()) {
+      char currentTime[10] = {};
+      rtc.getTimeString(currentTime);
 
-    clockOutput.updateTime(currentTime);
+      clockOutput.updateTime(currentTime);
+    }
 
-    // Serial.printf("Free Heap: %d\n", rp2040.getFreeHeap()); // 181,996 of 260K
+    // D_printf("Free Heap: %d\n", rp2040.getFreeHeap()); // 181,996 of 260K
   }
 
 #endif

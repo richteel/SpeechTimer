@@ -25,14 +25,14 @@ void printDateTime() {
   char timeString[40];
 
   rtc.getIsoDateString(timeString);
-  Serial.printf("\t\t%s\n", timeString);
+  D_printf("\t\t%s\n", timeString);
 }
 
 void printDateTime(const char* message) {
   char timeString[40];
 
   rtc.getIsoDateString(timeString);
-  Serial.printf("\t\t%s %s\n", message, timeString);
+  D_printf("\t\t%s %s\n", message, timeString);
 }
 
 void testSetup() {
@@ -157,7 +157,7 @@ const char* testRtc_getTimeString(bool assertValue) {
 
   char stringBuffer[10] = {};
   rtc.getTimeString(stringBuffer);
-  Serial.printf("\t\tTime String -> %s\n", stringBuffer);
+  D_printf("\t\tTime String -> %s\n", stringBuffer);
 
   bool val = strlen(stringBuffer) == 8;
 
@@ -189,7 +189,7 @@ void waitForSerial() {
 }
 
 void prompt(const char* message) {
-  Serial.println(message);
+  D_println(message);
   waitForSerial();
 }
 
@@ -203,47 +203,47 @@ bool runTests() {
   currentTest = 1;
   testCountFail = 0;
 
-  Serial.println();
-  Serial.println();
-  Serial.println();
-  Serial.println("=== STARTING TESTS ===");
-  Serial.println(F("** START: SD Card Tests **"));
+  D_println();
+  D_println();
+  D_println();
+  D_println("=== STARTING TESTS ===");
+  D_println(F("** START: SD Card Tests **"));
   prompt("Insert the SD Card and send a char through the serial port.");
-  Serial.printf("\t%d\tTest if card is present:\t%s\n", currentTest, testSdCardCardPresent(true));
-  Serial.printf("\t%d\tTest File Exists (config.txt):\t%s\n", currentTest, testSdCardFileExists("config.txt", true));
-  Serial.printf("\t%d\tTest File Does Not Exist (clowns.txt):\t%s\n", currentTest, testSdCardFileExists("clowns.txt", false));
+  D_printf("\t%d\tTest if card is present:\t%s\n", currentTest, testSdCardCardPresent(true));
+  D_printf("\t%d\tTest File Exists (config.txt):\t%s\n", currentTest, testSdCardFileExists("config.txt", true));
+  D_printf("\t%d\tTest File Does Not Exist (clowns.txt):\t%s\n", currentTest, testSdCardFileExists("clowns.txt", false));
   prompt("Remove the SD Card and send a char through the serial port.");
-  Serial.printf("\t%d\tTest if card is removed:\t%s\n", currentTest, testSdCardCardPresent(false));
-  Serial.printf("\t%d\tTest File Does Not Exist (config.txt):\t%s\n", currentTest, testSdCardFileExists("config.txt", false));
+  D_printf("\t%d\tTest if card is removed:\t%s\n", currentTest, testSdCardCardPresent(false));
+  D_printf("\t%d\tTest File Does Not Exist (config.txt):\t%s\n", currentTest, testSdCardFileExists("config.txt", false));
   prompt("Insert the SD Card and send a char through the serial port.");
-  Serial.printf("\t%d\tTest if card is present:\t%s\n", currentTest, testSdCardCardPresent(true));
-  Serial.printf("\t%d\tTest File Exists (config.txt):\t%s\n", currentTest, testSdCardFileExists("config.txt", true));
-  Serial.printf("\t%d\tTest Folder Exists (wwwroot):\t%s\n", currentTest, testSdCardFileExists("wwwroot/", true));
-  Serial.printf("\t%d\tRead file (config.txt):\t%s\n", currentTest, testSdCardReadFile("config.txt", true));
-  Serial.printf("\t%d\tLoad config file (config.txt):\t%s\n", currentTest, testSdCardLoadConfig("config.txt", true));
-  Serial.printf("\t%d\tSave config file (test.txt):\t%s\n", currentTest, testSdCardSaveConfig("test.txt", true));
-  Serial.printf("\t%d\tLoad config file (test.txt):\t%s\n", currentTest, testSdCardLoadConfig("test.txt", true));
-  Serial.printf("\t%d\tWrite to log file (samtest.log):\t%s\n", currentTest, testSdCardWriteToLog("samtest.log", true));
+  D_printf("\t%d\tTest if card is present:\t%s\n", currentTest, testSdCardCardPresent(true));
+  D_printf("\t%d\tTest File Exists (config.txt):\t%s\n", currentTest, testSdCardFileExists("config.txt", true));
+  D_printf("\t%d\tTest Folder Exists (wwwroot):\t%s\n", currentTest, testSdCardFileExists("wwwroot/", true));
+  D_printf("\t%d\tRead file (config.txt):\t%s\n", currentTest, testSdCardReadFile("config.txt", true));
+  D_printf("\t%d\tLoad config file (config.txt):\t%s\n", currentTest, testSdCardLoadConfig("config.txt", true));
+  D_printf("\t%d\tSave config file (test.txt):\t%s\n", currentTest, testSdCardSaveConfig("test.txt", true));
+  D_printf("\t%d\tLoad config file (test.txt):\t%s\n", currentTest, testSdCardLoadConfig("test.txt", true));
+  D_printf("\t%d\tWrite to log file (samtest.log):\t%s\n", currentTest, testSdCardWriteToLog("samtest.log", true));
 
 
-  Serial.println(F("** START: Wi-Fi Tests **"));
+  D_println(F("** START: Wi-Fi Tests **"));
   printDateTime("BEFORE:");
-  Serial.printf("\t%d\tGet internet time:\t%s\n", currentTest, testRtc_getInternetTime(true));
-  Serial.printf("\t\tURL for Time: %s\n", rtc.timeUpdateUrl);
+  D_printf("\t%d\tGet internet time:\t%s\n", currentTest, testRtc_getInternetTime(true));
+  D_printf("\t\tURL for Time: %s\n", rtc.timeUpdateUrl);
   printDateTime("AFTER:");
-  Serial.printf("\t%d\tGet time string:\t%s\n", currentTest, testRtc_getTimeString(true));
+  D_printf("\t%d\tGet time string:\t%s\n", currentTest, testRtc_getTimeString(true));
 
 
 
 
-  Serial.println();
+  D_println();
   if (testCountFail == 0) {
-    Serial.printf("RESULT: All %d Tests Passed!\n", currentTest - 1);
+    D_printf("RESULT: All %d Tests Passed!\n", currentTest - 1);
   } else {
-    Serial.printf("RESULT: %d Test(s) Failed out of %d Tests.\n", testCountFail, currentTest - 1);
+    D_printf("RESULT: %d Test(s) Failed out of %d Tests.\n", testCountFail, currentTest - 1);
   }
 
-  Serial.println("=== END TESTS ===");
+  D_println("=== END TESTS ===");
 
   testEnd();
 
