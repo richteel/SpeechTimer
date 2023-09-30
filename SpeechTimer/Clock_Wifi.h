@@ -30,7 +30,7 @@ private:
   int _wifiMode = 0;
   unsigned long _wifi_check_previousMillis = 0;
   unsigned long _wifi_update_interval;
-  bool _wifi_is_connected = true;  // Set to true so it will reset and trigger code to connect.
+  bool _wifi_is_connected_last_state = true;  // Set to true so it will reset and trigger code to connect.
   const char *_logfile = "logs/wifi.log";
   long _wifi_connect_attempts = 0;
   unsigned long _connectionStartMillis = 0;

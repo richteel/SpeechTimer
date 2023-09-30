@@ -85,12 +85,6 @@ void setup() {
 #if TESTING
   runTests();
 #else
-  // WiFi does not work unless serial is enabled
-  if (!DEBUG) {
-    Serial.begin(9600);
-    delay(1000);
-  }
-
   clockOutput.begin();
   rtc.begin();
   sd.begin();
@@ -117,7 +111,7 @@ void loop() {
       clockOutput.updateTime(currentTime);
     }
 
-    // D_printf("Free Heap: %d\n", rp2040.getFreeHeap()); // 181,996 of 260K
+    D_printf("Free Heap: %d\n", rp2040.getFreeHeap()); // 181,996 of 260K
   }
 
 #endif

@@ -49,7 +49,7 @@ bool Clock_Wifi::begin() {
 
 void Clock_Wifi::checkConnection(int maxRetries) {
   // Prevent updating the connection too often, especially if called back to back.
-  if ((millis() - _wifi_check_previousMillis) >= _wifi_update_interval) {
+  if ((millis() - _wifi_check_previousMillis) >= _wifi_update_interval || millis() < _wifi_update_interval) {
     int retryCount = 0;
     bool successfulConnection = false;
 
@@ -73,9 +73,7 @@ char *Clock_Wifi::getIpAddress() {
 }
 
 bool Clock_Wifi::isConnectedToInternet() {
-  bool connected = false;
-
-  return (_wifiMode == WIFI_STA) && _wifi_is_connected;
+  return (strlen(ipAddress) > 7) && (_wifiMode == WIFI_STA);
 }
 
 // ***** PRIVATE *****
@@ -86,12 +84,20 @@ void Clock_Wifi::checkConnectionStationMode() {
   unsigned long loopStartMillis = millis();
   bool activity = false;
   char buffer[256];
+  bool wifi_is_connected = isConnectedToInternet();
 
-  if (WiFi.status() != WL_CONNECTED) {
+  if (_wifiMode == WIFI_AP) {
+    return;
+  }
+
+  // WiFi.status() != WL_CONNECTED does not seem to the be the best way
+  // to determine if connected when Serial.begin() is not called
+  // if (WiFi.status() != WL_CONNECTED) {
+  if (!wifi_is_connected) {
     WiFi.disconnect();
-    if (_wifi_is_connected) {
+    if (_wifi_is_connected_last_state) {
       _sdcard->writeLogEntry(_logfile, "--- Lost WiFi Connection ---", LOG_INFO);
-      _wifi_is_connected = false;
+      _wifi_is_connected_last_state = false;
       activity = true;
       _wifi_connect_attempts = 0;
       _connectionStartMillis = millis();
@@ -100,7 +106,7 @@ void Clock_Wifi::checkConnectionStationMode() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    if (!_wifi_is_connected) {
+    if (!_wifi_is_connected_last_state) {
       _sdcard->writeLogEntry(_logfile, "*** Connected to WiFI ***", LOG_INFO);
       sprintf(buffer, "               SSID:\t%s", WiFi.SSID().c_str());
       _sdcard->writeLogEntry(_logfile, buffer, LOG_INFO);
@@ -109,13 +115,13 @@ void Clock_Wifi::checkConnectionStationMode() {
       sprintf(buffer, "            Gateway:\t%s", WiFi.gatewayIP().toString().c_str());
       _sdcard->writeLogEntry(_logfile, buffer, LOG_INFO);
       strcpy(ipAddress, WiFi.localIP().toString().c_str());
-      _wifi_is_connected = true;
+      _wifi_is_connected_last_state = true;
       activity = true;
     }
   }
 
   if (activity) {
-    if (_wifi_is_connected) {
+    if (_wifi_is_connected_last_state) {
       sprintf(buffer, "Connection Attempts:\t%d", (_wifi_connect_attempts + 1));
       _sdcard->writeLogEntry(_logfile, buffer, LOG_INFO);
       sprintf(buffer, "    Connection Time:\t%d ms", (millis() - _connectionStartMillis));
@@ -126,4 +132,5 @@ void Clock_Wifi::checkConnectionStationMode() {
   }
 
   _wifi_connect_attempts++;
+  _wifi_is_connected_last_state = wifi_is_connected;
 }

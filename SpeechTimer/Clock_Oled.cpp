@@ -92,12 +92,16 @@ void Clock_Oled::updateTime(const char *time) {
 
   _display.clearDisplay();
   drawTextCentered(LINE_2_Y, "Current Time");
-  sprintf(lineBuffer, "IP: %s\0", _ipAddress);
+  if (strlen(_ipAddress) > 0) {
+    sprintf(lineBuffer, "IP: %s\0", _ipAddress);
+  }
+  else {
+    sprintf(lineBuffer, "Not Connected\0");
+  }
   drawTextCentered(LINE_1_Y, lineBuffer);
   sprintf(lineBuffer, "%s\0", time);
   drawTextCentered(LINE_3_Y, lineBuffer);
   _display.display();
-  // delay(250);
 }
 
 
