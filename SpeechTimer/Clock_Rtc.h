@@ -1,7 +1,6 @@
 #ifndef CLOCK_RTC_H
 #define CLOCK_RTC_H
 
-#include <Arduino.h>
 #include <ArduinoJson.h>
 #include <TimeLib.h>
 
@@ -34,6 +33,7 @@ public:
   static constexpr uint32_t SECONDS_FROM_1970_TO_2000{ 946684800 };
 private:
   const uint8_t daysInMonth[12]{ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  bool _last_update_successful = false;
 
   Clock_SdCard *_sdcard;
   Clock_Wifi *_clock_Wifi;

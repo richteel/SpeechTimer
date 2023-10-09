@@ -48,16 +48,16 @@
     IR Remote - GND and 3V (Pin 36)
 */
 
-// #define NO_SERIAL
-
-#include <Arduino.h>
-#include "tests.h"
+#include "Clock_Remote.h"
 #include "DebugPrint.h"
+
+#include "tests.h"
 
 #include "Clock_SdCard.h"
 #include "Clock_Wifi.h"
 #include "Clock_Rtc.h"
 #include "Clock_Output.h"
+
 
 #if TESTING
 #else
@@ -65,6 +65,7 @@ Clock_SdCard sd = Clock_SdCard();
 Clock_Wifi wifi = Clock_Wifi(&sd);
 Clock_Rtc rtc = Clock_Rtc(&sd, &wifi);
 Clock_Output clockOutput = Clock_Output();
+Clock_Remote remote = Clock_Remote();
 
 #define UPDATE_DISPLAY_MILLIS 250
 unsigned long previousUpdateDisplayMillis = 0;
@@ -72,14 +73,13 @@ unsigned long previousUpdateDisplayMillis = 0;
 
 void setup() {
   D_SerialBegin(115200);
-
   /*
     If DEBUG=1 in DebugPring.h, we are debugging the code so
     wait for the serial connection with the PC. This will cause
     the code to halt until a terminal is connected, but only if
     we are debugging the code.
   */
-  while (DEBUG && !Serial)
+  while (DEBUG && !(Serial || Serial1))
     ;
 
 #if TESTING
@@ -88,6 +88,7 @@ void setup() {
   clockOutput.begin();
   rtc.begin();
   sd.begin();
+  remote.begin();
   wifi.begin();
   clockOutput.updateIpAddress(wifi.ipAddress);
   rtc.getInternetTime();
@@ -102,17 +103,20 @@ void loop() {
       rtc.getInternetTime();
     }
 
-    previousUpdateDisplayMillis = millis();
-
     if (rtc.timeIsSet()) {
+      previousUpdateDisplayMillis = millis();
       char currentTime[10] = {};
       rtc.getTimeString(currentTime);
 
       clockOutput.updateTime(currentTime);
     }
 
-    D_printf("Free Heap: %d\n", rp2040.getFreeHeap()); // 181,996 of 260K
+    if (SHOW_HEAP) {
+      D_printf("Free Heap: %d\n", rp2040.getFreeHeap());  // 181,996 of 260K
+    }
   }
+
+  remote.checkIrRecv();
 
 #endif
 }

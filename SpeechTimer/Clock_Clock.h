@@ -1,7 +1,6 @@
 #ifndef CLOCK_CLOCK_H
 #define CLOCK_CLOCK_H
 
-#include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
 
 enum ClockMode {

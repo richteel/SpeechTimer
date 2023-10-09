@@ -21,6 +21,8 @@ long Clock_Rtc::getInternetTime(long timeoutMs) {
   const char server[] = "worldtimeapi.org";
   bool receivedResponse = false;
 
+  _last_update_successful = false;
+
   if (!_clock_Wifi->isConnectedToInternet()) {
     return unixtime;
   }
@@ -43,7 +45,6 @@ long Clock_Rtc::getInternetTime(long timeoutMs) {
 
   startConnection = millis();
   bool foundResponseBody = false;
-  bool deserializedData = false;
   char lastchars[5] = "\0\0\0\0";
 
   while (!receivedResponse && (millis() - startConnection <= timeoutMs)) {
@@ -74,8 +75,8 @@ long Clock_Rtc::getInternetTime(long timeoutMs) {
 
           unixtime = _lastInternetTime.unixtime;
 
-          deserializedData = true;
           _internet_update_previousMillis = millis();
+          _last_update_successful = true;
         }
         receivedResponse = true;
       }
@@ -85,7 +86,7 @@ long Clock_Rtc::getInternetTime(long timeoutMs) {
   setTime((uint32_t)unixtime);
   if (!foundResponseBody) {
     _sdcard->writeLogEntry(_logfile, "Timed out waiting for response.", LOG_ERROR);
-  } else if (!deserializedData) {
+  } else if (!_last_update_successful) {
     _sdcard->writeLogEntry(_logfile, "Time failed to update from the internet.", LOG_ERROR);
   } else {
     // adjustTime(_lastInternetTime.raw_offset + ((millis() - _internet_update_previousMillis) / 1000));
@@ -116,13 +117,14 @@ void Clock_Rtc::getTime(datetime_t *dt) {
 }
 
 void Clock_Rtc::getTimeString(char stringBuffer[10]) {
+
   datetime_t dt;
   unixToDatetime_t(&dt, now());
   sprintf(stringBuffer, "%02d:%02d:%02d", dt.hour, dt.min, dt.sec);  // 2023-09-23T10:01:25.238839-04:00
 }
 
 bool Clock_Rtc::timeIsSet() {
-  return (timeStatus() == timeSet);
+  return (_last_update_successful && timeStatus() == timeSet);
 }
 
 void Clock_Rtc::unixToDatetime_t(datetime_t *mydate, uint32_t unixtime) {
