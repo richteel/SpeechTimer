@@ -45,8 +45,13 @@ public:
 
   void checkIrRecv();
 
-private:
+  char checkForButton();
 
+private:
+  static constexpr char _buttons[17]{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#', 'U', 'D', 'L', 'R', 'K'};
+  static constexpr unsigned int _commands[17]{ 0x19, 0x45, 0x46, 0x47, 0x44, 0x40, 0x43, 0x07, 0x15, 0x09, 0x16, 0x0D, 0x18, 0x52, 0x08, 0x5A, 0x1C };
+
+  char getButton(unsigned int command);
 };
 
 #endif

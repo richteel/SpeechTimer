@@ -17,8 +17,10 @@ void Clock_Output::updateIpAddress(const char *ipAddress) {
 }
 
 void Clock_Output::updateTime(const char *time) {
-  _clock.updateTime(time);
-  _oleDisplay.updateTime(time);
+  if (strlen(time) > 0) {
+    _clock.updateTime(time);
+    _oleDisplay.updateTime(time);
+  }
 }
 
 

@@ -2,12 +2,7 @@
 #define CLOCK_CLOCK_H
 
 #include <Adafruit_NeoPixel.h>
-
-enum ClockMode {
-  Clock,
-  Timer,
-  Setting
-};
+#include "ClockIOenums.h"
 
 class Clock_Clock {
 public:
@@ -39,7 +34,7 @@ private:
   int _numberOfDigits;
   int _numberOfColons;
   Adafruit_NeoPixel _strip = Adafruit_NeoPixel();
-  ClockMode _mode = Clock;
+  ClockMode _mode = ClockMode::Clock;
   uint32_t _clockColor = _strip.Color(255, 255, 255);
   uint32_t _timerColor = _strip.Color(255, 255, 255);
 

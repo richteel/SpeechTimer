@@ -48,7 +48,7 @@
     IR Remote - GND and 3V (Pin 36)
 */
 
-#include "Clock_Remote.h"
+// #include "Clock_Remote.h"
 #include "DebugPrint.h"
 
 #include "tests.h"
@@ -56,8 +56,9 @@
 #include "Clock_SdCard.h"
 #include "Clock_Wifi.h"
 #include "Clock_Rtc.h"
-#include "Clock_Output.h"
 
+#include "Clock_Input.h"
+#include "Clock_Output.h"
 
 #if TESTING
 #else
@@ -65,7 +66,7 @@ Clock_SdCard sd = Clock_SdCard();
 Clock_Wifi wifi = Clock_Wifi(&sd);
 Clock_Rtc rtc = Clock_Rtc(&sd, &wifi);
 Clock_Output clockOutput = Clock_Output();
-Clock_Remote remote = Clock_Remote();
+Clock_Input clockInput = Clock_Input(&sd, &wifi);
 
 #define UPDATE_DISPLAY_MILLIS 250
 unsigned long previousUpdateDisplayMillis = 0;
@@ -88,8 +89,8 @@ void setup() {
   clockOutput.begin();
   rtc.begin();
   sd.begin();
-  remote.begin();
   wifi.begin();
+  clockInput.begin();
   clockOutput.updateIpAddress(wifi.ipAddress);
   rtc.getInternetTime();
 #endif
@@ -99,10 +100,12 @@ void loop() {
 #if TESTING
 #else
   if (millis() - previousUpdateDisplayMillis > UPDATE_DISPLAY_MILLIS) {
+    // Set the time if not already set
     if (!rtc.timeIsSet()) {
       rtc.getInternetTime();
     }
 
+    // Show the updated time
     if (rtc.timeIsSet()) {
       previousUpdateDisplayMillis = millis();
       char currentTime[10] = {};
@@ -110,13 +113,86 @@ void loop() {
 
       clockOutput.updateTime(currentTime);
     }
+    else {
+      char currentTime[10] = "--:--";
+      clockOutput.updateTime(currentTime);
+    }
 
+    // SHOW_HEAP is defined in DebugPrint.h
     if (SHOW_HEAP) {
       D_printf("Free Heap: %d\n", rp2040.getFreeHeap());  // 181,996 of 260K
     }
   }
 
-  remote.checkIrRecv();
+  clockInput.checkInputs();
 
 #endif
 }
+
+
+// #if TESTING
+// #else
+// Clock_SdCard sd = Clock_SdCard();
+// Clock_Wifi wifi = Clock_Wifi(&sd);
+// Clock_Rtc rtc = Clock_Rtc(&sd, &wifi);
+// Clock_Output clockOutput = Clock_Output();
+// Clock_Remote remote = Clock_Remote();
+
+// #define UPDATE_DISPLAY_MILLIS 250
+// unsigned long previousUpdateDisplayMillis = 0;
+// #endif
+
+// void setup() {
+//   D_SerialBegin(115200);
+//   /*
+//     If DEBUG=1 in DebugPring.h, we are debugging the code so
+//     wait for the serial connection with the PC. This will cause
+//     the code to halt until a terminal is connected, but only if
+//     we are debugging the code.
+//   */
+//   while (DEBUG && !(Serial || Serial1))
+//     ;
+
+// #if TESTING
+//   runTests();
+// #else
+//   clockOutput.begin();
+//   rtc.begin();
+//   sd.begin();
+//   remote.begin();
+//   wifi.begin();
+//   clockOutput.updateIpAddress(wifi.ipAddress);
+//   rtc.getInternetTime();
+// #endif
+// }
+
+// void loop() {
+// #if TESTING
+// #else
+//   if (millis() - previousUpdateDisplayMillis > UPDATE_DISPLAY_MILLIS) {
+//     if (!rtc.timeIsSet()) {
+//       rtc.getInternetTime();
+//     }
+
+//     if (rtc.timeIsSet()) {
+//       previousUpdateDisplayMillis = millis();
+//       char currentTime[10] = {};
+//       rtc.getTimeString(currentTime);
+
+//       clockOutput.updateTime(currentTime);
+//     }
+//     else {
+//       char currentTime[10] = "--:--";
+//       clockOutput.updateTime(currentTime);
+//     }
+
+//     if (SHOW_HEAP) {
+//       D_printf("Free Heap: %d\n", rp2040.getFreeHeap());  // 181,996 of 260K 
+//                                                           // 10/11/2023 180,100
+//     }
+//   }
+
+//   remote.checkIrRecv();
+
+// #endif
+// }
