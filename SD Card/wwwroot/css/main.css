@@ -149,3 +149,70 @@ p.dotted {
 	min-width: 20em;
 	text-align: left;
 }
+
+.remote {
+	background-color: silver;
+	width: 14em;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+.remote button {
+	margin: 1em;
+	width: 3em;
+	height: 3em;
+	border-radius: 50%;
+	border: black 2px solid;
+	font-weight: 800;
+}
+
+.remote .button_white {
+	background-color: white;
+}
+
+.remote .button_red {
+	background-color: red;
+}
+
+.remote .button_blue {
+	background-color: blue;
+}
+
+.remote .button_none {
+	display: inline-block
+}
+
+.remote:first-of-type {
+	border-top-right-radius: 2em 2em;
+	border-top-left-radius: 2em 2em;
+}
+
+.remote:last-of-type {
+	border-bottom-right-radius: 2em 2em;
+	border-bottom-left-radius: 2em 2em;
+}
+
+.remote .white_back {
+	background-color: white;
+	display: inline-block;
+}
+
+.remote_arrows_row_1 .white_back:nth-of-type(2) {
+	border-top-right-radius: 50% 50%;
+	border-top-left-radius: 50% 50%;
+}
+
+.remote_arrows_row_2 .white_back:first-of-type {
+	border-top-left-radius: 50% 50%;
+	border-bottom-left-radius: 50% 50%;
+}
+
+.remote_arrows_row_2 .white_back:last-of-type {
+	border-top-right-radius: 50% 50%;
+	border-bottom-right-radius: 50% 50%;
+}
+
+.remote_arrows_row_3 .white_back:nth-of-type(2) {
+	border-bottom-right-radius: 50% 50%;
+	border-bottom-left-radius: 50% 50%;
+}

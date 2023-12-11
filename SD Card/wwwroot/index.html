@@ -36,6 +36,9 @@
 			<button id="tab-5" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-5" tabindex="-1">
 				<span class="focus">Test</span>
 			</button>
+			<button id="tab-6" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-6" tabindex="-1">
+				<span class="focus">Remote</span>
+			</button>
 		</div>
 
 		<div id="tabpanel-1" role="tabpanel" tabindex="0" aria-labelledby="tab-1" class="is-hidden">
@@ -106,6 +109,68 @@
 				<form accept-charset="utf-8" method="POST">
 					<input type="hidden" name="TAB" value="5" />
 					<button class="button" name="TEST" value="TEST" type="submit">TEST</button>
+				</form>
+			</div>
+		</div>
+		<div id="tabpanel-6" role="tabpanel" tabindex="0" aria-labelledby="tab-6" class="is-hidden">
+			<div class="form_div">
+				<h2>Remote</h2>
+				<br />
+				<form accept-charset="utf-8" method="POST">
+					<input type="hidden" name="TAB" value="6" />
+					<div class="remote">
+						<button class="button_white" name="REMOTE" value="1" type="submit">1</button>
+						<button class="button_white" name="REMOTE" value="2" type="submit">2</button>
+						<button class="button_white" name="REMOTE" value="3" type="submit">3</button>
+					</div>
+					<div class="remote">
+						<button class="button_white" name="REMOTE" value="4" type="submit">4</button>
+						<button class="button_white" name="REMOTE" value="5" type="submit">5</button>
+						<button class="button_white" name="REMOTE" value="6" type="submit">6</button>
+					</div>
+					<div class="remote">
+						<button class="button_white" name="REMOTE" value="7" type="submit">7</button>
+						<button class="button_white" name="REMOTE" value="8" type="submit">8</button>
+						<button class="button_white" name="REMOTE" value="9" type="submit">9</button>
+					</div>
+					<div class="remote">
+						<button class="button_red" name="REMOTE" value="*" type="submit">&#128948;</button>
+						<button class="button_white" name="REMOTE" value="0" type="submit">0</button>
+						<button class="button_red" name="REMOTE" value="#" type="submit">#</button>
+					</div>
+					<div class="remote remote_arrows_row_1">
+						<div class="button_none">
+							&nbsp;
+						</div>
+						<div class="white_back">
+							<button class="button_blue" name="REMOTE" value="UP" type="submit">&uarr;</button>
+						</div>
+						<div class="button_none">
+							&nbsp;
+						</div>
+					</div>
+					<div class="remote remote_arrows_row_2">
+						<div class="white_back">
+							<button class="button_blue" name="REMOTE" value="LEFT" type="submit">&larr;</button>
+						</div>
+						<div class="white_back">
+							<button class="button_red" name="REMOTE" value="OK" type="submit">OK</button>
+						</div>
+						<div class="white_back">
+							<button class="button_blue" name="REMOTE" value="RIGHT" type="submit">&rarr;</button>
+						</div>
+					</div>
+					<div class="remote remote_arrows_row_3">
+						<div class="button_none">
+							&nbsp;
+						</div>
+						<div class="white_back">
+							<button class="button_blue" name="REMOTE" value="DOWN" type="submit">&darr;</button>
+						</div>
+						<div class="button_none">
+							&nbsp;
+						</div>
+					</div>
 				</form>
 			</div>
 		</div>

@@ -1,0 +1,40 @@
+{
+	"hostname": "SpeechTimer",
+	"timezone": "",
+	"networks": [
+		{
+			"ssid": "YourSSID_1",
+			"pass": "YourPassword_1"
+		},
+		{
+			"ssid": "YourSSID_2",
+			"pass": "YourPassword_2"
+		},
+		{
+			"ssid": "YourSSID_3",
+			"pass": "YourPassword_3"
+		}
+	],
+	"timers": [
+		{
+			"min": 5,
+			"max": 7,
+			"manual": false
+		},
+		{
+			"min": 1,
+			"max": 2,
+			"manual": false
+		},
+		{
+			"min": 2,
+			"max": 3,
+			"manual": false
+		},
+		{
+			"min": 0,
+			"max": 0,
+			"manual": true
+		}
+	]
+}

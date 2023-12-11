@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="297mm"
+   viewBox="0 0 210 297"
+   version="1.1"
+   id="svg3897"
+   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
+   sodipodi:docname="Photoresistor Window v3.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview3899"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="2.0928549"
+     inkscape:cx="123.99331"
+     inkscape:cy="755.90524"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs3894" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <circle
+       style="fill:none;stroke:#ff0000;stroke-width:0.1"
+       id="path4031"
+       cx="35.524639"
+       cy="93.144188"
+       r="2.7" />
+    <circle
+       style="fill:none;stroke:#ff0000;stroke-width:0.1"
+       id="path4055"
+       cx="42.793915"
+       cy="93.080971"
+       r="2.75" />
+    <circle
+       style="fill:none;stroke:#ff0000;stroke-width:0.1"
+       id="path4057"
+       cx="49.873562"
+       cy="93.397026"
+       r="2.8" />
+    <text
+       xml:space="preserve"
+       style="font-size:4.23333px;font-family:'Times New Roman';-inkscape-font-specification:'Times New Roman, ';text-align:center;text-anchor:middle;fill:#0000ff;fill-opacity:1;stroke:#0000ff;stroke-width:0.1;stroke-opacity:1"
+       x="35.39822"
+       y="72.979843"
+       id="text4120"><tspan
+         sodipodi:role="line"
+         id="tspan4118"
+         style="fill:#0000ff;fill-opacity:1;stroke:#0000ff;stroke-width:0.1;stroke-opacity:1"
+         x="35.39822"
+         y="72.979843">This one</tspan><tspan
+         sodipodi:role="line"
+         style="fill:#0000ff;fill-opacity:1;stroke:#0000ff;stroke-width:0.1;stroke-opacity:1"
+         x="35.39822"
+         y="78.271507"
+         id="tspan4122">worked for</tspan><tspan
+         sodipodi:role="line"
+         style="fill:#0000ff;fill-opacity:1;stroke:#0000ff;stroke-width:0.1;stroke-opacity:1"
+         x="35.39822"
+         y="83.563164"
+         id="tspan4124">5 mm hole</tspan><tspan
+         sodipodi:role="line"
+         style="fill:#0000ff;fill-opacity:1;stroke:#0000ff;stroke-width:0.1;stroke-opacity:1"
+         x="35.39822"
+         y="88.854828"
+         id="tspan4176">˅</tspan></text>
+  </g>
+</svg>
