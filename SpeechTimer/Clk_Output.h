@@ -115,6 +115,7 @@ private:
   static const int _lightValuesLen = 20;
   int _lightValues[_lightValuesLen];
   int _lightValueOldestIdx = 0;
+  long _lightValueSum = 0;  // Cached sum for O(1) average calculation
   unsigned long _lightReadPreviousMillis = 0;
   const long _lightReadInterval = 500;
 };

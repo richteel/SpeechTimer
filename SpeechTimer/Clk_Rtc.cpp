@@ -1,8 +1,17 @@
 #include "Clk_Rtc.h"
 #include "StructsAndEnums.h"
+#include "Defines.h"  // For constants
 
 // ***** PUBLIC *****
 Clk_Rtc::Clk_Rtc(Clk_SdCard *sdcard, Clk_Wifi *clock_Wifi, unsigned long internet_update_interval) {
+  // Validate pointer parameters
+  if (sdcard == nullptr || clock_Wifi == nullptr) {
+    _sdcard = nullptr;
+    _clock_Wifi = nullptr;
+    _internet_update_interval = internet_update_interval;
+    return;
+  }
+  
   _sdcard = sdcard;
   _clock_Wifi = clock_Wifi;
   _internet_update_interval = internet_update_interval;
@@ -28,27 +37,51 @@ long Clk_Rtc::getInternetTime(long timeoutMs) {
     return unixtime;
   }
 
-  // if you get a connection, report back via serial:
-  if (_clock_Wifi->wifiClient.connect(server, 80)) {
-    if (strlen(_sdcard->sdCardConfig.timezone) == 0) {
-      _clock_Wifi->wifiClient.println(F("GET /api/ip/? HTTP/1.1"));
-      sprintf(timeUpdateUrl, "http://%s/api/ip/?", server);
-    } else {
-      _clock_Wifi->wifiClient.printf("GET /api/timezone/%s/? HTTP/1.1\n", _sdcard->sdCardConfig.timezone);
-      sprintf(timeUpdateUrl, "http://%s/api/timezone/%s/?", server, _sdcard->sdCardConfig.timezone);
+  // Add connection timeout to prevent hanging
+  unsigned long connectStart = millis();
+  bool connected = false;
+  
+  // Try to connect with timeout (use half the total timeout for connection)
+  while (!connected && (millis() - connectStart <= timeoutMs / 2)) {
+    if (_clock_Wifi->wifiClient.connect(server, 80)) {
+      connected = true;
+      break;
     }
-    _clock_Wifi->wifiClient.println(F("Host: worldtimeapi.org"));
-    _clock_Wifi->wifiClient.println(F("User-Agent: Lynx/2.8.9dev libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/3.3.8 (Raspberry Pi Pico W)"));
-    _clock_Wifi->wifiClient.println(F("Accept: text/html,application/json"));
-    _clock_Wifi->wifiClient.println(F("Connection: close"));
-    _clock_Wifi->wifiClient.println();
+    delay(HTTP_CONNECTION_RETRY_DELAY_MS);  // Brief delay before retry
+  }
+  
+  if (!connected) {
+    DEBUGV("[CLK_RTC] Connection timeout - failed to connect to %s\n", server);
+    return unixtime;
+  }
+
+  // Send HTTP request
+  if (strlen(_sdcard->sdCardConfig.timezone) == 0) {
+    _clock_Wifi->wifiClient.println(F("GET /api/ip/? HTTP/1.1"));
+    sprintf(timeUpdateUrl, "http://%s/api/ip/?", server);
+  } else {
+    _clock_Wifi->wifiClient.printf("GET /api/timezone/%s/? HTTP/1.1\n", _sdcard->sdCardConfig.timezone);
+    sprintf(timeUpdateUrl, "http://%s/api/timezone/%s/?", server, _sdcard->sdCardConfig.timezone);
+  }
+  _clock_Wifi->wifiClient.println(F("Host: worldtimeapi.org"));
+  _clock_Wifi->wifiClient.println(F("User-Agent: Lynx/2.8.9dev libwww-FM/2.14 SSL-MM/1.4.1 GNUTLS/3.3.8 (Raspberry Pi Pico W)"));
+  _clock_Wifi->wifiClient.println(F("Accept: text/html,application/json"));
+  _clock_Wifi->wifiClient.println(F("Connection: close"));
+  _clock_Wifi->wifiClient.println();
+
+  // Calculate remaining timeout after connection attempt
+  unsigned long remainingTimeout = timeoutMs - (millis() - connectStart);
+  if (remainingTimeout <= 0) {
+    DEBUGV("[CLK_RTC] Timeout exhausted during connection\n");
+    _clock_Wifi->wifiClient.stop();
+    return unixtime;
   }
 
   startConnection = millis();
   bool foundResponseBody = false;
   char lastchars[5] = "\0\0\0\0";
 
-  while (!receivedResponse && (millis() - startConnection <= timeoutMs)) {
+  while (!receivedResponse && (millis() - startConnection <= remainingTimeout)) {
     while (_clock_Wifi->wifiClient.available()) {
       if (!foundResponseBody) {
         char readChar = _clock_Wifi->wifiClient.read();
@@ -67,8 +100,14 @@ long Clk_Rtc::getInternetTime(long timeoutMs) {
           foundResponseBody = true;
         }
       } else {
+        // Bounds checking: limit response buffer to prevent stack overflow
+        constexpr size_t MAX_RESPONSE_SIZE = HTTP_RESPONSE_BUFFER_SIZE;
         int charCount = _clock_Wifi->wifiClient.available();
-        char responseBuffer[charCount + 1];
+        if (charCount > MAX_RESPONSE_SIZE) {
+          DEBUGV("[CLK_RTC] Warning: Response size %d exceeds maximum %d, truncating\n", charCount, MAX_RESPONSE_SIZE);
+          charCount = MAX_RESPONSE_SIZE;
+        }
+        char responseBuffer[MAX_RESPONSE_SIZE];
         int c = _clock_Wifi->wifiClient.read(responseBuffer, charCount);
         responseBuffer[c] = char(0);
 
@@ -81,6 +120,12 @@ long Clk_Rtc::getInternetTime(long timeoutMs) {
         }
         receivedResponse = true;
       }
+    }
+    
+    // Check if connection closed unexpectedly
+    if (!receivedResponse && !_clock_Wifi->wifiClient.connected()) {
+      DEBUGV("[CLK_RTC] Connection closed by server before receiving response\n");
+      break;
     }
   }
 
@@ -108,6 +153,9 @@ long Clk_Rtc::getInternetTime(long timeoutMs) {
     DEBUGV("[CLK_RTC] Updated DateTime is: %s\n", dtBuffer);
   }
 
+  // Clean up: close the connection
+  _clock_Wifi->wifiClient.stop();
+
   return now();
 }
 
@@ -122,10 +170,20 @@ void Clk_Rtc::getTime(datetime_t *dt) {
 }
 
 void Clk_Rtc::getTimeString(char stringBuffer[10]) {
-
   datetime_t dt;
   unixToDatetime_t(&dt, now());
-  sprintf(stringBuffer, "%02d:%02d:%02d", dt.hour, dt.min, dt.sec);  // 2023-09-23T10:01:25.238839-04:00
+  
+  // Optimize: Manual formatting is faster than sprintf for simple time strings
+  // Format: "HH:MM:SS"
+  stringBuffer[0] = '0' + (dt.hour / 10);
+  stringBuffer[1] = '0' + (dt.hour % 10);
+  stringBuffer[2] = ':';
+  stringBuffer[3] = '0' + (dt.min / 10);
+  stringBuffer[4] = '0' + (dt.min % 10);
+  stringBuffer[5] = ':';
+  stringBuffer[6] = '0' + (dt.sec / 10);
+  stringBuffer[7] = '0' + (dt.sec % 10);
+  stringBuffer[8] = '\0';
 }
 
 bool Clk_Rtc::timeIsSet() {
@@ -203,21 +261,22 @@ bool Clk_Rtc::deserializeInternetTime(const char *input, size_t inputLength) {
     return false;
   }
 
-  _lastInternetTime.abbreviation = doc["abbreviation"];  // "EDT"
-  _lastInternetTime.client_ip = doc["client_ip"];        // "173.79.173.100"
-  _lastInternetTime.datetime = doc["datetime"];          // "2023-09-17T17:54:56.042498-04:00"
-  _lastInternetTime.day_of_week = doc["day_of_week"];    // 0
-  _lastInternetTime.day_of_year = doc["day_of_year"];    // 260
-  _lastInternetTime.dst = doc["dst"];                    // true
-  _lastInternetTime.dst_from = doc["dst_from"];          // "2023-03-12T07:00:00+00:00"
-  _lastInternetTime.dst_offset = doc["dst_offset"];      // 3600
-  _lastInternetTime.dst_until = doc["dst_until"];        // "2023-11-05T06:00:00+00:00"
-  _lastInternetTime.raw_offset = doc["raw_offset"];      // -18000
-  _lastInternetTime.timezone = doc["timezone"];          // "America/New_York"
-  _lastInternetTime.unixtime = doc["unixtime"];          // 1694987696
-  _lastInternetTime.utc_datetime = doc["utc_datetime"];  // "2023-09-17T21:54:56.042498+00:00"
-  _lastInternetTime.utc_offset = doc["utc_offset"];      // "-04:00"
-  _lastInternetTime.week_number = doc["week_number"];    // 37
+  // Use strlcpy to safely copy strings and prevent dangling pointers
+  strlcpy(_lastInternetTime.abbreviation, doc["abbreviation"] | "", sizeof(_lastInternetTime.abbreviation));
+  strlcpy(_lastInternetTime.client_ip, doc["client_ip"] | "", sizeof(_lastInternetTime.client_ip));
+  strlcpy(_lastInternetTime.datetime, doc["datetime"] | "", sizeof(_lastInternetTime.datetime));
+  _lastInternetTime.day_of_week = doc["day_of_week"] | 0;    // 0
+  _lastInternetTime.day_of_year = doc["day_of_year"] | 0;    // 260
+  _lastInternetTime.dst = doc["dst"] | false;                // true
+  strlcpy(_lastInternetTime.dst_from, doc["dst_from"] | "", sizeof(_lastInternetTime.dst_from));
+  _lastInternetTime.dst_offset = doc["dst_offset"] | 0;      // 3600
+  strlcpy(_lastInternetTime.dst_until, doc["dst_until"] | "", sizeof(_lastInternetTime.dst_until));
+  _lastInternetTime.raw_offset = doc["raw_offset"] | 0;      // -18000
+  strlcpy(_lastInternetTime.timezone, doc["timezone"] | "", sizeof(_lastInternetTime.timezone));
+  _lastInternetTime.unixtime = doc["unixtime"] | 0;          // 1694987696
+  strlcpy(_lastInternetTime.utc_datetime, doc["utc_datetime"] | "", sizeof(_lastInternetTime.utc_datetime));
+  strlcpy(_lastInternetTime.utc_offset, doc["utc_offset"] | "+00:00", sizeof(_lastInternetTime.utc_offset));
+  _lastInternetTime.week_number = doc["week_number"] | 0;    // 37
 
   return true;
 }

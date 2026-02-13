@@ -1,4 +1,5 @@
 #include "Clk_Wifi.h"
+#include "Defines.h"  // For constants
 
 #define FILE_NAME_WIFI "[Clk_Wifi.cpp]"
 
@@ -12,6 +13,12 @@ Clk_Wifi::Clk_Wifi(unsigned long wifi_update_interval) {
 }
 
 bool Clk_Wifi::begin(Config *configuration) {
+  // Validate pointer parameter
+  if (configuration == nullptr) {
+    config = nullptr;
+    return false;
+  }
+  
   config = configuration;
   apAddedCount = 0;
 
@@ -42,7 +49,7 @@ bool Clk_Wifi::begin(Config *configuration) {
     wifiMode = WIFI_AP;
     WiFi.mode(wifiMode);
     checkConnection(4, true);
-    DEBUGV("%s begin ------^^------ WIFI: Staring AP Mode ------^^------\n", FILE_NAME_WIFI);
+    DEBUGV("%s begin ------^^------ WIFI: Starting AP Mode ------^^------\n", FILE_NAME_WIFI);
 
     return true;
   } else {
@@ -53,31 +60,51 @@ bool Clk_Wifi::begin(Config *configuration) {
 
     DEBUGV("%s begin - Connecting WiFi...\n", FILE_NAME_WIFI);
     unsigned long startConnect = millis();
-    if (wifiMulti.run() != WL_CONNECTED) {
-      if (_beginLoopCount < 5) {
-        DEBUGV("%s begin - Failed to connect to Wi-Fi. Trying again...\n", FILE_NAME_WIFI);
-        _beginLoopCount++;
-        delay(1000);
-        begin(configuration);
-      } else {
-        DEBUGV("%s begin - Failed to connect to Wi-Fi. Quiting\n", FILE_NAME_WIFI);
-        _beginLoopCount = 0;
+    
+    // Use iteration instead of recursion to prevent stack overflow
+    constexpr uint8_t MAX_ATTEMPTS = MAX_WIFI_CONNECT_ATTEMPTS;
+    uint8_t attempt = 0;
+    bool connected = false;
+    
+    while (attempt < MAX_ATTEMPTS) {
+      if (wifiMulti.run() == WL_CONNECTED) {
+        connected = true;
+        DEBUGV("%s begin - WiFi connected, SSID: %s\n", FILE_NAME_WIFI, WiFi.SSID().c_str());
+        // Optimize: Avoid temporary String object by formatting IP directly
+        IPAddress ip = WiFi.localIP();
+        DEBUGV("%s begin - IP address: %d.%d.%d.%d\n", FILE_NAME_WIFI, ip[0], ip[1], ip[2], ip[3]);
+        DEBUGV("%s begin - Connected in %d ms\n", FILE_NAME_WIFI, millis() - startConnect);
+        break;
       }
-    } else {
-      _beginLoopCount = 0;
-      DEBUGV("%s begin - WiFi connected, SSID: %s\n", FILE_NAME_WIFI, WiFi.SSID().c_str());
-      DEBUGV("%s begin - IP address: %s\n", FILE_NAME_WIFI, WiFi.localIP().toString().c_str());
-      DEBUGV("%s begin - Connected in %d ms\n", FILE_NAME_WIFI, millis() - startConnect);
+      
+      attempt++;
+      if (attempt < MAX_ATTEMPTS) {
+        DEBUGV("%s begin - Attempt %d/%d failed. Retrying...\n", FILE_NAME_WIFI, attempt, MAX_ATTEMPTS);
+        delay(1000);
+      }
+    }
+    
+    if (!connected) {
+      DEBUGV("%s begin - Failed to connect after %d attempts\n", FILE_NAME_WIFI, MAX_ATTEMPTS);
     }
 
-    // checkConnection(4, true);
     DEBUGV("%s begin ------^^------ WIFI: Starting Station Mode ------^^------\n", FILE_NAME_WIFI);
 
-    return true;
+    return connected;
   }
 }
 
 void Clk_Wifi::checkConnection(int maxRetries, bool fromBegin) {
+  if (wifiMode == WIFI_AP) {
+    checkConnectionAccessPointMode(fromBegin);
+    return;
+  }
+  
+  if (wifiMode != WIFI_STA) {
+    return;  // Only check station mode
+  }
+  
+  checkConnectionStationMode(fromBegin);
 }
 
 IPAddress Clk_Wifi::getIpAddress() {
@@ -85,11 +112,18 @@ IPAddress Clk_Wifi::getIpAddress() {
 }
 
 bool Clk_Wifi::hasIpAddress() {
-  strcpy(ipAddress, WiFi.localIP().toString().c_str());
-  if (strcmp(ipAddress, "(IP unset)") == 0) {
+  // Optimize: Avoid temporary String object by formatting IP directly
+  IPAddress ip = WiFi.localIP();
+  
+  // Check if IP is valid (not 0.0.0.0)
+  if (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0) {
     ipAddress[0] = '\0';
+    return false;
   }
-
+  
+  // Format IP address directly without String allocation
+  snprintf(ipAddress, sizeof(ipAddress), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+  
   return (strlen(ipAddress) > MIN_IP_ADDRESS_LEN) && (wifiMode == WIFI_STA);
 }
 
@@ -108,7 +142,33 @@ bool isWiFiConnected() {
 
 // ***** PRIVATE *****
 void Clk_Wifi::checkConnectionAccessPointMode(bool fromBegin) {
+  // In AP mode, we're always "connected" - just verify the mode is active
+  if (WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA) {
+    DEBUGV("%s checkConnectionAccessPointMode - AP Mode active\n", FILE_NAME_WIFI);
+  } else {
+    DEBUGV("%s checkConnectionAccessPointMode - WARNING: AP Mode not active\n", FILE_NAME_WIFI);
+  }
 }
 
 void Clk_Wifi::checkConnectionStationMode(bool fromBegin) {
+  // Check if already connected
+  if (WiFi.status() == WL_CONNECTED) {
+    DEBUGV("%s checkConnectionStationMode - Already connected to %s\n", 
+           FILE_NAME_WIFI, WiFi.SSID().c_str());
+    return;
+  }
+  
+  // Attempt to reconnect
+  DEBUGV("%s checkConnectionStationMode - Connection lost, attempting to reconnect...\n", FILE_NAME_WIFI);
+  
+  if (wifiMulti.run() == WL_CONNECTED) {
+    DEBUGV("%s checkConnectionStationMode - Reconnected to %s\n", 
+           FILE_NAME_WIFI, WiFi.SSID().c_str());
+    // Optimize: Avoid temporary String object by formatting IP directly
+    IPAddress ip = WiFi.localIP();
+    DEBUGV("%s checkConnectionStationMode - IP address: %d.%d.%d.%d\n", 
+           FILE_NAME_WIFI, ip[0], ip[1], ip[2], ip[3]);
+  } else {
+    DEBUGV("%s checkConnectionStationMode - Failed to reconnect\n", FILE_NAME_WIFI);
+  }
 }
