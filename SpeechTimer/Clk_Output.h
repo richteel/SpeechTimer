@@ -57,6 +57,8 @@ public:
 
   void updateTimer();
 
+  void setWiFiConnectedWaitingForTime();
+
   ClockMode clockMode = ClockMode::Clock;
 
 private:
@@ -90,6 +92,7 @@ private:
   ClockMode _mode = ClockMode::Clock;
   uint32_t _clockColor;
   uint32_t _timerColor;
+  bool _timeHasBeenSynced = false;
   Adafruit_SSD1306 _oledDisplay = Adafruit_SSD1306(OLED_SCREEN_WIDTH, OLED_SCREEN_HEIGHT, &Wire, OLED_RESET, 400000UL, 100000UL);
 
   uint8_t getCharSegements(char c);

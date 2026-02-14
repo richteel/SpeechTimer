@@ -1,6 +1,8 @@
 #ifndef CLK_REMOTE_H
 #define CLK_REMOTE_H
 
+#include <cstdint>  // Required for uint8_t, uint16_t, etc. used by IRremote
+
 /*
  * Specify which protocol(s) should be used for decoding.
  * If no protocol is defined, all protocols (except Bang&Olufsen) are active.

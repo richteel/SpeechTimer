@@ -127,17 +127,9 @@ bool Clk_Wifi::hasIpAddress() {
   return (strlen(ipAddress) > MIN_IP_ADDRESS_LEN) && (wifiMode == WIFI_STA);
 }
 
-bool isWiFiConnected() {
-  // You can change longer or shorter depending on your network response
-  // Shorter => more responsive, but more ping traffic
-  static uint8_t theTTL = 10;
-
-  // Use ping() to test TCP connections
-  if (WiFi.ping(WiFi.gatewayIP(), theTTL) == theTTL) {
-    return true;
-  }
-
-  return false;
+bool Clk_Wifi::isWiFiConnected() {
+  // Check if WiFi status shows connected
+  return WiFi.status() == WL_CONNECTED;
 }
 
 // ***** PRIVATE *****

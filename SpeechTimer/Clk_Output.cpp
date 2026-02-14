@@ -145,6 +145,14 @@ void Clk_Output::neopixelTheaterChaseRainbow(int wait) {
   }
 }
 
+void Clk_Output::setWiFiConnectedWaitingForTime() {
+  // Set all neopixels to green to indicate WiFi connected but waiting for time sync
+  if (!_timeHasBeenSynced) {
+    _clockColor = _strip.Color(0, 255, 0);  // Green
+    neopixelColorWipe(_clockColor, 50);
+  }
+}
+
 void Clk_Output::oledClear() {
   _oledDisplay.clearDisplay();
 }
@@ -251,6 +259,12 @@ void Clk_Output::updateIpAddress(const char *ipAddress) {
 void Clk_Output::updateTime(const char *time) {
   if (strlen(time) == 0) {
     return;
+  }
+
+  // Mark time as synced when a valid time is received (not "--:--")
+  if (strcmp(time, "--:--") != 0 && !_timeHasBeenSynced) {
+    _timeHasBeenSynced = true;
+    _clockColor = _strip.Color(255, 255, 255);  // Return to white once time is synced
   }
 
   // *** UPDATE NEOPIXELS ***

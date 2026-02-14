@@ -246,8 +246,8 @@ void noTone(uint8_t aPinNumber){
 
 // If you program the Nano RP2040 Connect with this core, then you must redefine LED_BUILTIN
 // and use the external reset with 1 kOhm to ground to enter UF2 mode
-#undef LED_BUILTIN
-#define LED_BUILTIN          6
+// Note: LED_BUILTIN will be defined after Arduino.h is included, so we use __has_include
+// to check if it's already defined and undef it if needed in Clk_Remote.cpp
 
 #elif defined(PARTICLE) // !!!UNTESTED!!!
 #define IR_RECEIVE_PIN      A4

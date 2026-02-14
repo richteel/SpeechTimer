@@ -243,8 +243,7 @@ void Clk_Rtc::unixToDatetime_t(datetime_t *mydate, uint32_t unixtime) {
 
 // ***** PRIVATE *****
 bool Clk_Rtc::deserializeInternetTime(const char *input, size_t inputLength) {
-  // StaticJsonDocument<768> doc;
-  StaticJsonDocument<1024> doc;
+  JsonDocument doc;
 
   DeserializationError error = deserializeJson(doc, input, inputLength);
 

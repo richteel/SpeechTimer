@@ -1,6 +1,14 @@
 #ifndef GLOBALDEFINES_H
 #define GLOBALDEFINES_H
 
+/*****************************************************************************
+ *                           FreeRTOS Configuration                          *
+ *****************************************************************************/
+// Must be defined BEFORE any FreeRTOS headers are included
+#if defined(ARDUINO_ARCH_MBED_RP2040) || defined(ARDUINO_ARCH_RP2040)
+#define __FREERTOS 1
+#endif
+
 /*
   ** HW Device Connection on Raspberry Pi Pico W **
     Pin GPIO  Device  Device Pin/Function

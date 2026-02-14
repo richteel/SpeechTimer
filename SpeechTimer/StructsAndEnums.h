@@ -1,12 +1,6 @@
 #ifndef STRUCTSANDENUMS
 #define STRUCTSANDENUMS
 
-#if defined(ARDUINO_ARCH_MBED_RP2040) || defined(ARDUINO_ARCH_RP2040)
-#include <FreeRTOS.h>
-#include <task.h>
-#define xPortGetCoreID get_core_num
-#endif
-
 #include <map>
 #include <WiFi.h>
 
@@ -40,13 +34,7 @@ static std::map<WiFiMode_t, const char*> wifiModeName{
   { WIFI_AP, "Soft-AP Mode" },
   { WIFI_AP_STA, "Station + Soft-AP Mode" }
 };
-static std::map<eTaskState, const char*> eTaskStateName{
-  { eReady, "Ready" },
-  { eRunning, "Running" },
-  { eBlocked, "Blocked" },
-  { eSuspended, "Suspended" },
-  { eDeleted, "Deleted" }
-};
+// Note: eTaskStateName map removed - not used and requires FreeRTOS types
 static std::map<DebugLevels, const char*> debugLevelName{
   { DebugLevels::Verbose, "Verbose" },
   { DebugLevels::Info, "Info" },

@@ -61,8 +61,16 @@
 #define FILE_NAME "[SpeechTimer.ino]"
 
 /*****************************************************************************
+ *                               Project Files                               *
+ *****************************************************************************/
+// Include Defines.h FIRST to set __FREERTOS 1 before FreeRTOS headers
+#include "Defines.h"   // Pin definitions, programming mode, and debug flag (defines __FREERTOS)
+#include "DbgPrint.h"  // Serial helpers
+
+/*****************************************************************************
  *                              FreeRTOS Setup                               *
  *****************************************************************************/
+// __FREERTOS 1 is defined in Defines.h for RP2040
 #if !defined(ESP_PLATFORM) && !defined(ARDUINO_ARCH_MBED_RP2040) && !defined(ARDUINO_ARCH_RP2040)
 #pragma message("Unsupported platform")
 #endif
@@ -88,13 +96,11 @@ void esploop1(void *pvParameters) {
 /*****************************************************************************
  *                               Include Files                               *
  *****************************************************************************/
-#include <Dictionary.h>
+// #include <Dictionary.h>  // Not currently used
 
 /*****************************************************************************
- *                               Project Files                               *
+ *                               Additional Project Files                    *
  *****************************************************************************/
-#include "DbgPrint.h"  // Serial helpers
-#include "Defines.h"   // Pin definitions, programming mode, and debug flag
 #include "Clk_Output.h"
 #include "Clk_Remote.h"
 #include "config.h"      // Structures for the configuration file
@@ -446,6 +452,10 @@ void checkWiFi() {
         last_WiFiMode = clockWifi.wifiMode;
         sprintf(msgBuffer, "checkWiFi - Wi-Fi has changed to %s", wifiModeName[last_WiFiMode]);
         debugMessage(msgBuffer, logDebug);
+        // Set NeoPixels to green when WiFi connects (waiting for time sync)
+        if (clockWifi.wifiMode == WIFI_STA && clockWifi.isWiFiConnected()) {
+          clockOutput.setWiFiConnectedWaitingForTime();
+        }
       }
       
       xSemaphoreGive(wifi_state_mutex);

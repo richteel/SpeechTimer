@@ -107,9 +107,7 @@ bool Clk_SdCard::loadConfig(const char *fileFullName) {
     return false;
   }
 
-  const int config_json_capacity = JSON_OBJECT_SIZE(4) + JSON_ARRAY_SIZE(NETWORKINFOARRAYSIZE) + NETWORKINFOARRAYSIZE * JSON_OBJECT_SIZE(2) + JSON_ARRAY_SIZE(TIMERARRAYSIZE) + TIMERARRAYSIZE * JSON_OBJECT_SIZE(2);
-
-  StaticJsonDocument<config_json_capacity> doc;
+  JsonDocument doc;
 
   // Deserialize the JSON document
   DeserializationError error = deserializeJson(doc, f);
