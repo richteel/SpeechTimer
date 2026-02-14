@@ -35,12 +35,12 @@ void Clk_SdCard::clearConfig() {
   sdCardConfig.hostname[0] = '\0';
   sdCardConfig.timezone[0] = '\0';
 
-  for (NetworkInfo ni : sdCardConfig.networks) {
+  for (NetworkInfo& ni : sdCardConfig.networks) {  // Fixed: Use reference, not copy
     ni.ssid[0] = '\0';
     ni.pass[0] = '\0';
   }
 
-  for (TimerInfo ti : sdCardConfig.timers) {
+  for (TimerInfo& ti : sdCardConfig.timers) {  // Fixed: Use reference, not copy
     ti.min = 0;
     ti.max = 0;
     ti.manual = true;
@@ -107,9 +107,7 @@ bool Clk_SdCard::loadConfig(const char *fileFullName) {
     return false;
   }
 
-  const int config_json_capacity = JSON_OBJECT_SIZE(4) + JSON_ARRAY_SIZE(NETWORKINFOARRAYSIZE) + NETWORKINFOARRAYSIZE * JSON_OBJECT_SIZE(2) + JSON_ARRAY_SIZE(TIMERARRAYSIZE) + TIMERARRAYSIZE * JSON_OBJECT_SIZE(2);
-
-  StaticJsonDocument<config_json_capacity> doc;
+  JsonDocument doc;
 
   // Deserialize the JSON document
   DeserializationError error = deserializeJson(doc, f);
@@ -118,15 +116,51 @@ bool Clk_SdCard::loadConfig(const char *fileFullName) {
     return false;
   } else {
     clearConfig();
-    strlcpy(sdCardConfig.hostname, doc["hostname"] | "speechtimer", sizeof(sdCardConfig.hostname));
-    strlcpy(sdCardConfig.timezone, doc["timezone"] | "", sizeof(sdCardConfig.timezone));
+    
+    // Load hostname with truncation warning
+    const char* hostnameValue = doc["hostname"] | "speechtimer";
+    size_t hostnameLen = strlen(hostnameValue);
+    strlcpy(sdCardConfig.hostname, hostnameValue, sizeof(sdCardConfig.hostname));
+    if (hostnameLen >= sizeof(sdCardConfig.hostname)) {
+      DEBUGV("%s loadConfig - WARNING: hostname truncated from %d to %d chars\n", 
+             FILE_NAME_CARD, hostnameLen, sizeof(sdCardConfig.hostname) - 1);
+      // TODO: Add visual indication on display/neopixels for config truncation warning
+    }
+    
+    // Load timezone with truncation warning
+    const char* timezoneValue = doc["timezone"] | "";
+    size_t timezoneLen = strlen(timezoneValue);
+    strlcpy(sdCardConfig.timezone, timezoneValue, sizeof(sdCardConfig.timezone));
+    if (timezoneLen >= sizeof(sdCardConfig.timezone)) {
+      DEBUGV("%s loadConfig - WARNING: timezone truncated from %d to %d chars\n", 
+             FILE_NAME_CARD, timezoneLen, sizeof(sdCardConfig.timezone) - 1);
+      // TODO: Add visual indication on display/neopixels for config truncation warning
+    }
 
     JsonArray arrNetworks = doc["networks"].as<JsonArray>();
     int i = 0;
     for (JsonObject repo : arrNetworks) {
       if (i < NETWORKINFOARRAYSIZE) {
-        strlcpy(sdCardConfig.networks[i].ssid, repo["ssid"], sizeof(sdCardConfig.networks[i].ssid));
-        strlcpy(sdCardConfig.networks[i].pass, repo["pass"], sizeof(sdCardConfig.networks[i].pass));
+        // Load SSID with truncation warning
+        const char* ssidValue = repo["ssid"];
+        size_t ssidLen = strlen(ssidValue);
+        strlcpy(sdCardConfig.networks[i].ssid, ssidValue, sizeof(sdCardConfig.networks[i].ssid));
+        if (ssidLen >= sizeof(sdCardConfig.networks[i].ssid)) {
+          DEBUGV("%s loadConfig - WARNING: network[%d] SSID truncated from %d to %d chars\n", 
+                 FILE_NAME_CARD, i, ssidLen, sizeof(sdCardConfig.networks[i].ssid) - 1);
+          // TODO: Add visual indication on display/neopixels for config truncation warning
+        }
+        
+        // Load password with truncation warning
+        const char* passValue = repo["pass"];
+        size_t passLen = strlen(passValue);
+        strlcpy(sdCardConfig.networks[i].pass, passValue, sizeof(sdCardConfig.networks[i].pass));
+        if (passLen >= sizeof(sdCardConfig.networks[i].pass)) {
+          DEBUGV("%s loadConfig - WARNING: network[%d] password truncated from %d to %d chars\n", 
+                 FILE_NAME_CARD, i, passLen, sizeof(sdCardConfig.networks[i].pass) - 1);
+          // TODO: Add visual indication on display/neopixels for config truncation warning
+        }
+        
         DEBUGV("%s loadConfig - %d.\t%s\t%s\n", FILE_NAME_CARD, i, sdCardConfig.networks[i].ssid, sdCardConfig.networks[i].pass);
       }
       i++;

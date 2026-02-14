@@ -4,8 +4,8 @@
 #define NETWORKINFOARRAYSIZE 8
 
 struct NetworkInfo {
-  char ssid[256];
-  char pass[256];
+  char ssid[32];   // Reduced from 256 to 32 (typical WiFi SSID max length)
+  char pass[64];   // Reduced from 256 to 64 (adequate for most passwords)
 };
 
 #define TIMERARRAYSIZE 4
@@ -17,8 +17,8 @@ struct TimerInfo {
 };
 
 struct Config {
-  char hostname[256];
-  char timezone[256];
+  char hostname[32];  // Reduced from 256 to 32 (typical hostname length)
+  char timezone[64];  // Reduced from 256 to 64 (sufficient for timezone strings)
   NetworkInfo networks[NETWORKINFOARRAYSIZE];
   TimerInfo timers[TIMERARRAYSIZE];
 };

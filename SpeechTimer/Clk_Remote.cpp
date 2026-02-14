@@ -11,7 +11,8 @@ Clk_Remote::Clk_Remote() {
 }
 
 bool Clk_Remote::begin() {
-  IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
+  // Disable LED feedback to avoid conflicts with RP2040 GPIO pin definitions
+  IrReceiver.begin(IR_RECEIVE_PIN, DISABLE_LED_FEEDBACK);
 
   return true;
 }

@@ -57,6 +57,8 @@ public:
 
   void updateTimer();
 
+  void setWiFiConnectedWaitingForTime();
+
   ClockMode clockMode = ClockMode::Clock;
 
 private:
@@ -90,6 +92,7 @@ private:
   ClockMode _mode = ClockMode::Clock;
   uint32_t _clockColor;
   uint32_t _timerColor;
+  bool _timeHasBeenSynced = false;
   Adafruit_SSD1306 _oledDisplay = Adafruit_SSD1306(OLED_SCREEN_WIDTH, OLED_SCREEN_HEIGHT, &Wire, OLED_RESET, 400000UL, 100000UL);
 
   uint8_t getCharSegements(char c);
@@ -115,6 +118,7 @@ private:
   static const int _lightValuesLen = 20;
   int _lightValues[_lightValuesLen];
   int _lightValueOldestIdx = 0;
+  long _lightValueSum = 0;  // Cached sum for O(1) average calculation
   unsigned long _lightReadPreviousMillis = 0;
   const long _lightReadInterval = 500;
 };

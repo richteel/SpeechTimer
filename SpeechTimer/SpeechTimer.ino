@@ -61,8 +61,16 @@
 #define FILE_NAME "[SpeechTimer.ino]"
 
 /*****************************************************************************
+ *                               Project Files                               *
+ *****************************************************************************/
+// Include Defines.h FIRST to set __FREERTOS 1 before FreeRTOS headers
+#include "Defines.h"   // Pin definitions, programming mode, and debug flag (defines __FREERTOS)
+#include "DbgPrint.h"  // Serial helpers
+
+/*****************************************************************************
  *                              FreeRTOS Setup                               *
  *****************************************************************************/
+// __FREERTOS 1 is defined in Defines.h for RP2040
 #if !defined(ESP_PLATFORM) && !defined(ARDUINO_ARCH_MBED_RP2040) && !defined(ARDUINO_ARCH_RP2040)
 #pragma message("Unsupported platform")
 #endif
@@ -88,13 +96,11 @@ void esploop1(void *pvParameters) {
 /*****************************************************************************
  *                               Include Files                               *
  *****************************************************************************/
-#include <Dictionary.h>
+// #include <Dictionary.h>  // Not currently used
 
 /*****************************************************************************
- *                               Project Files                               *
+ *                               Additional Project Files                    *
  *****************************************************************************/
-#include "DbgPrint.h"  // Serial helpers
-#include "Defines.h"   // Pin definitions, programming mode, and debug flag
 #include "Clk_Output.h"
 #include "Clk_Remote.h"
 #include "config.h"      // Structures for the configuration file
@@ -172,15 +178,15 @@ DebugLevels debugLevel = DebugLevels::Verbose;
 // DebugLevels debugLevel = DebugLevels::Warning;
 // DebugLevels debugLevel = DebugLevels::Error;
 
-int waitLoopsToPrintTaskInfo = 100;
+int waitLoopsToPrintTaskInfo = LOOPS_BEFORE_TASK_INFO_PRINT;
 
 /*****************************************************************************
  *                                   QUEUES                                  *
  *****************************************************************************/
-static const uint8_t log_queue_len = 10;
+static const uint8_t log_queue_len = LOG_QUEUE_LENGTH;
 static QueueHandle_t log_queue;
 
-static const uint8_t remote_queue_len = 5;
+static const uint8_t remote_queue_len = REMOTE_QUEUE_LENGTH;
 static QueueHandle_t remote_queue;
 
 /*****************************************************************************
@@ -188,6 +194,9 @@ static QueueHandle_t remote_queue;
  *****************************************************************************/
 static SemaphoreHandle_t sdcard_mutex;
 static SemaphoreHandle_t rtc_mutex;
+static SemaphoreHandle_t config_mutex;
+static SemaphoreHandle_t wifi_state_mutex;
+static SemaphoreHandle_t display_state_mutex;
 
 /*****************************************************************************
  *                               INO FUNCTIONS                               *
@@ -198,9 +207,15 @@ void debugMessage(const char *message, const char *logfile = "", DebugLevels deb
     return;
   }
 
-  char timeStr[10];
+  char timeStr[10] = "--:--";
   char msgBuffer[512];
-  clockRtc.getTimeString(timeStr);
+  
+  // Protect RTC access with mutex
+  if (xSemaphoreTake(rtc_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+    clockRtc.getTimeString(timeStr);
+    xSemaphoreGive(rtc_mutex);
+  }
+  
   // Format the message
   sprintf(msgBuffer, "%s\t%s\t%s %s\t%d\t%d\t%d", timeStr, errorlevel, FILE_NAME, message, xPortGetCoreID(), rp2040.getFreeHeap(), uxTaskGetStackHighWaterMark(NULL));
 
@@ -208,9 +223,24 @@ void debugMessage(const char *message, const char *logfile = "", DebugLevels deb
   strlcpy(logEntry.message, msgBuffer, sizeof(logEntry.message));
   strlcpy(logEntry.logfile, logfile, sizeof(logEntry.logfile));
 
-  if (xQueueSend(log_queue, (void *)&logEntry, 10) != pdTRUE) {
-    Dbg_printf("%s: %s debugMessage - Log Queue Full -----------------------------\n", debugLevelName[DebugLevels::Error], FILE_NAME);
-    Dbg_printf("%s\n", msgBuffer);
+  if (xQueueSend(log_queue, (void *)&logEntry, pdMS_TO_TICKS(QUEUE_SEND_TIMEOUT_MS)) != pdTRUE) {
+    // Queue is full - try to make room by dropping oldest entry
+    Log_Entry dummy;
+    if (xQueueReceive(log_queue, &dummy, QUEUE_RECEIVE_NO_WAIT) == pdTRUE) {
+      Dbg_printf("%s: %s debugMessage - Log Queue Full, dropped oldest entry\n", 
+                 debugLevelName[DebugLevels::Warning], FILE_NAME);
+      
+      // Try to add new entry again
+      if (xQueueSend(log_queue, (void *)&logEntry, QUEUE_RECEIVE_NO_WAIT) != pdTRUE) {
+        // Still failed - critical error
+        Dbg_printf("%s: %s debugMessage - CRITICAL: Failed to queue after making room:\n%s\n", 
+                   debugLevelName[DebugLevels::Error], FILE_NAME, msgBuffer);
+      }
+    } else {
+      // Couldn't even remove an entry - critical error
+      Dbg_printf("%s: %s debugMessage - CRITICAL: Log Queue Full and cannot remove entries:\n%s\n", 
+                 debugLevelName[DebugLevels::Error], FILE_NAME, msgBuffer);
+    }
   }
 }
 
@@ -220,7 +250,7 @@ void debugMessage(const char *message, const char *logfile = "", DebugLevels deb
 void checkRemote(void *param) {
   // Make certain that setup has completed
   while (!setup_complete) {
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_SETUP_WAIT));
   }
 
   int loopCount = 0;
@@ -239,8 +269,20 @@ void checkRemote(void *param) {
     char button = clockRemote.checkForButton();
 
     if (button != '\0') {
-      if (xQueueSend(remote_queue, (void *)&button, 10) != pdTRUE) {
-        debugMessage("checkRemote - Output Queue Full -----------------------------", logDebug, DebugLevels::Error);
+      if (xQueueSend(remote_queue, (void *)&button, pdMS_TO_TICKS(QUEUE_SEND_TIMEOUT_MS)) != pdTRUE) {
+        // Queue is full - try to make room by dropping oldest button press
+        char dummy;
+        if (xQueueReceive(remote_queue, &dummy, QUEUE_RECEIVE_NO_WAIT) == pdTRUE) {
+          // Successfully removed oldest, try to add new button
+          if (xQueueSend(remote_queue, (void *)&button, QUEUE_RECEIVE_NO_WAIT) == pdTRUE) {
+            digitalWrite(PIN_LED_INDICATOR, HIGH);
+            debugMessage("checkRemote - Remote Queue Full, dropped oldest button", logDebug, DebugLevels::Warning);
+          } else {
+            debugMessage("checkRemote - CRITICAL: Remote Queue Full, button press lost", logDebug, DebugLevels::Error);
+          }
+        } else {
+          debugMessage("checkRemote - CRITICAL: Remote Queue Full and cannot remove entries", logDebug, DebugLevels::Error);
+        }
       } else {
         digitalWrite(PIN_LED_INDICATOR, HIGH);
       }
@@ -252,45 +294,80 @@ void checkRemote(void *param) {
       debugMessage("checkRemote");
       loopCount = 0;
     }
-    vTaskDelay(250 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_REMOTE_CHECK));
   }
 }
 
 void checkSdCard(void *param) {
   // Make certain that setup has completed
   while (!setup_complete) {
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_SETUP_WAIT));
   }
 
   int loopCount = 0;
   Log_Entry item;
 
   while (1) {
-    if (xSemaphoreTake(sdcard_mutex, 100) == pdTRUE) {
-      if (!clockSdCard.isCardPresent()) {
+    bool cardPresent = false;
+    unsigned long currentConfigLoadMillis = 0;
+    
+    if (xSemaphoreTake(sdcard_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+      cardPresent = clockSdCard.isCardPresent();
+      xSemaphoreGive(sdcard_mutex);
+    } else {
+      continue;
+    }
+    
+    // Protect config state variables with mutex
+    if (xSemaphoreTake(config_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+      if (!cardPresent) {
         last_configLoadMillis = 0;
         configLoadMillis = 0;
       } else if (configLoadMillis == 0) {
         configLoadMillis = millis();
       }
-      xSemaphoreGive(sdcard_mutex);
+      currentConfigLoadMillis = configLoadMillis;
+      xSemaphoreGive(config_mutex);
     } else {
       continue;
     }
 
     // Check if there are log entries to write to the SD Card
     bool writeToFile = false;
-    while (xQueueReceive(log_queue, (void *)&item, 0) == pdTRUE) {
-      if (configLoadMillis != 0 && strlen(item.logfile) > 0) {
+    while (xQueueReceive(log_queue, (void *)&item, QUEUE_RECEIVE_NO_WAIT) == pdTRUE) {
+      if (currentConfigLoadMillis != 0 && strlen(item.logfile) > 0) {
         writeToFile = true;
       }
 
       if (writeToFile) {
-        if (xSemaphoreTake(sdcard_mutex, 10) == pdTRUE) {
-          clockSdCard.writeLogEntry(item.logfile, item.message);
-          xSemaphoreGive(sdcard_mutex);
-        } else {
-          Dbg_printf("%s: %s checkSdCard - Failed to write log entry to the SD Card. (Could not obtain mutex.)", DebugLevels::Error, FILE_NAME);
+        // Retry logic to prevent log entry loss
+        constexpr uint8_t MAX_RETRIES = MAX_SDCARD_WRITE_RETRIES;
+        uint8_t retries = 0;
+        bool writtenSuccessfully = false;
+        
+        while (retries < MAX_RETRIES) {
+          if (xSemaphoreTake(sdcard_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_SHORT_MS)) == pdTRUE) {
+            clockSdCard.writeLogEntry(item.logfile, item.message);
+            xSemaphoreGive(sdcard_mutex);
+            writtenSuccessfully = true;
+            break;
+          }
+          retries++;
+          if (retries < MAX_RETRIES) {
+            vTaskDelay(pdMS_TO_TICKS(RETRY_DELAY_MS));  // Brief delay before retry
+          }
+        }
+        
+        if (!writtenSuccessfully) {
+          // Failed after all retries - try to preserve the message by re-queuing
+          Dbg_printf("%s: %s checkSdCard - Failed to write log entry after %d retries. Attempting to re-queue.\n", 
+                     debugLevelName[DebugLevels::Error], FILE_NAME, MAX_RETRIES);
+          
+          // Try to put the item back at the front of the queue
+          if (xQueueSendToFront(log_queue, (void *)&item, QUEUE_RECEIVE_NO_WAIT) != pdTRUE) {
+            Dbg_printf("%s: %s checkSdCard - CRITICAL: Could not re-queue log entry. Message lost:\n%s\n", 
+                       debugLevelName[DebugLevels::Error], FILE_NAME, item.message);
+          }
           writeToFile = false;
         }
       }
@@ -306,7 +383,7 @@ void checkSdCard(void *param) {
       debugMessage("checkSdCard");
       loopCount = 0;
     }
-    vTaskDelay(250 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_SDCARD_CHECK));
   }
 }
 
@@ -315,15 +392,25 @@ void checkSdCard(void *param) {
 void checkWiFi() {
   // Make certain that setup has completed
   while (!setup_complete) {
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_SETUP_WAIT));
   }
 
   int loopCount = 0;
   char msgBuffer[255];
 
   while (1) {
+    // Protect config state variables with mutex
+    unsigned long currentConfigLoadMillis = 0;
+    unsigned long currentLastConfigLoadMillis = 0;
+    
+    if (xSemaphoreTake(config_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+      currentConfigLoadMillis = configLoadMillis;
+      currentLastConfigLoadMillis = last_configLoadMillis;
+      xSemaphoreGive(config_mutex);
+    }
+    
     // If the SD Card was inserted/reinserted, use the new configuration to connect to the Wi-Fi AP
-    if (configLoadMillis != last_configLoadMillis) {
+    if (currentConfigLoadMillis != currentLastConfigLoadMillis) {
       debugMessage("checkWiFi - START: Restart Wi-Fi with new Config", logDebug);
 
       unsigned long startConnect = millis();
@@ -335,39 +422,59 @@ void checkWiFi() {
       }
       debugMessage(msgBuffer, logDebug);
       debugMessage("checkWiFi - Wi-Fi Begin Completed", logDebug);
-      last_configLoadMillis = configLoadMillis;
+      
+      // Update last_configLoadMillis with mutex protection
+      if (xSemaphoreTake(config_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+        last_configLoadMillis = configLoadMillis;
+        xSemaphoreGive(config_mutex);
+      }
+      
       debugMessage("checkWiFi - END: Restart Wi-Fi with new Config", logDebug);
     }
 
     // Set the IP Address property
     bool hasIp = clockWifi.hasIpAddress();
 
-    // If the IP Address has changed, print the IP Addess
-    if (strcmp(last_ipaddress, clockWifi.ipAddress) != 0) {
-      debugMessage("checkWiFi - START: Update IP Address", logDebug);
-      strcpy(last_ipaddress, clockWifi.ipAddress);
-      clockOutput.updateIpAddress(last_ipaddress);
-      sprintf(msgBuffer, "checkWiFi - IP Address has changed to %s", last_ipaddress);
-      debugMessage(msgBuffer, logDebug);
-      debugMessage("checkWiFi - END: Update IP Address", logDebug);
-    }
+    // Protect WiFi state variables with mutex
+    if (xSemaphoreTake(wifi_state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+      // If the IP Address has changed, print the IP Address
+      if (strcmp(last_ipaddress, clockWifi.ipAddress) != 0) {
+        debugMessage("checkWiFi - START: Update IP Address", logDebug);
+        strcpy(last_ipaddress, clockWifi.ipAddress);
+        clockOutput.updateIpAddress(last_ipaddress);
+        sprintf(msgBuffer, "checkWiFi - IP Address has changed to %s", last_ipaddress);
+        debugMessage(msgBuffer, logDebug);
+        debugMessage("checkWiFi - END: Update IP Address", logDebug);
+      }
 
-    // If the Wi-Fi Mode has changed, print debug message
-    if (last_WiFiMode != clockWifi.wifiMode) {
-      last_WiFiMode = clockWifi.wifiMode;
-      sprintf(msgBuffer, "checkWiFi - Wi-Fi has changed to %s", wifiModeName[last_WiFiMode]);
-      debugMessage(msgBuffer, logDebug);
+      // If the Wi-Fi Mode has changed, print debug message
+      if (last_WiFiMode != clockWifi.wifiMode) {
+        last_WiFiMode = clockWifi.wifiMode;
+        sprintf(msgBuffer, "checkWiFi - Wi-Fi has changed to %s", wifiModeName[last_WiFiMode]);
+        debugMessage(msgBuffer, logDebug);
+        // Set NeoPixels to green when WiFi connects (waiting for time sync)
+        if (clockWifi.wifiMode == WIFI_STA && clockWifi.isWiFiConnected()) {
+          clockOutput.setWiFiConnectedWaitingForTime();
+        }
+      }
+      
+      xSemaphoreGive(wifi_state_mutex);
     }
 
     char currentTime[10] = "--:--";
-    if (hasIp && !clockRtc.timeIsSet()) {
-      clockRtc.getInternetTime();
-      if (clockRtc.timeIsSet()) {
-        clockRtc.getTimeString(currentTime);
+    
+    // Protect RTC access with mutex
+    if (xSemaphoreTake(rtc_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+      if (hasIp && !clockRtc.timeIsSet()) {
+        clockRtc.getInternetTime();
+        if (clockRtc.timeIsSet()) {
+          clockRtc.getTimeString(currentTime);
 
-        sprintf(msgBuffer, "checkWiFi - Current time is: %s", currentTime);
-        debugMessage(msgBuffer, logDebug);
+          sprintf(msgBuffer, "checkWiFi - Current time is: %s", currentTime);
+          debugMessage(msgBuffer, logDebug);
+        }
       }
+      xSemaphoreGive(rtc_mutex);
     }
 
     loopCount++;
@@ -376,14 +483,68 @@ void checkWiFi() {
       debugMessage("checkWiFi");
       loopCount = 0;
     }
-    vTaskDelay(250 / portTICK_PERIOD_MS);
+    
+    // Adaptive delay: Fast when connecting, slow when stable
+    // This improves responsiveness during connection while saving CPU when stable
+    TickType_t delay = hasIp ? 
+                       pdMS_TO_TICKS(TASK_DELAY_WIFI_CHECK_STABLE) :   // 1000ms when connected
+                       pdMS_TO_TICKS(TASK_DELAY_WIFI_CHECK_UNSTABLE); // 250ms when connecting
+    vTaskDelay(delay);
+  }
+}
+
+/*****************************************************************************
+ *                           REMOTE INPUT HANDLERS                           *
+ *****************************************************************************/
+void handleTimerDigitInput(char digit) {
+  // Optimize: Use direct arithmetic instead of sprintf+atoi
+  // Shift digits left and append new digit: 12 + '3' = 123
+  int digitValue = digit - '0';  // Convert char to int
+  
+  if (clockOutput.clockMode == ClockMode::TimerSetMin) {
+    int minVal = clockOutput.timerSetMin();
+    minVal = (minVal * 10 + digitValue) % 100;  // Append digit, keep in valid range
+    clockOutput.timerSetMin(minVal);
+  } else if (clockOutput.clockMode == ClockMode::TimerSetMax) {
+    int maxVal = clockOutput.timerSetMax();
+    maxVal = (maxVal * 10 + digitValue) % 100;  // Append digit, keep in valid range
+    clockOutput.timerSetMax(maxVal);
+  }
+}
+
+void handleHashButton() {
+  if (clockOutput.clockMode == ClockMode::Clock) {
+    clockOutput.clockMode = ClockMode::TimerReady;
+    clockOutput.timerNext(false);
+  } else if (clockOutput.clockMode == ClockMode::TimerReady || 
+             clockOutput.clockMode == ClockMode::TimerSetMin || 
+             clockOutput.clockMode == ClockMode::TimerSetMax) {
+    clockOutput.timerNext();
+  }
+}
+
+void handleNavigationInput(char direction) {
+  if (direction == 'L' && clockOutput.clockMode == ClockMode::TimerSetMax) {
+    clockOutput.clockMode = ClockMode::TimerSetMin;
+  } else if (direction == 'R' && clockOutput.clockMode == ClockMode::TimerSetMin) {
+    clockOutput.clockMode = ClockMode::TimerSetMax;
+  }
+}
+
+void handleOkButton() {
+  if (clockOutput.clockMode == ClockMode::TimerReady) {
+    clockOutput.clockMode = ClockMode::TimerRun;
+  } else if (clockOutput.clockMode == ClockMode::TimerRun) {
+    clockOutput.clockMode = ClockMode::TimerStop;
+  } else if (clockOutput.clockMode == ClockMode::TimerStop) {
+    clockOutput.clockMode = ClockMode::TimerReady;
   }
 }
 
 void clockUpdate(void *param) {
   // Make certain that setup has completed
   while (!setup_complete) {
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_SETUP_WAIT));
   }
 
   int loopCount = 0;
@@ -395,75 +556,32 @@ void clockUpdate(void *param) {
   clockOutput.begin();
 
   while (1) {
-    if (clockRtc.timeIsSet()) {
-      clockRtc.getTimeString(currentTime);
+    // Protect RTC access with mutex
+    if (xSemaphoreTake(rtc_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+      if (clockRtc.timeIsSet()) {
+        clockRtc.getTimeString(currentTime);
+      } else {
+        strlcpy(currentTime, "--:--", sizeof(currentTime));
+      }
+      xSemaphoreGive(rtc_mutex);
     } else {
       strlcpy(currentTime, "--:--", sizeof(currentTime));
     }
 
-    while (xQueueReceive(remote_queue, (void *)&item, 0) == pdTRUE) {
-      // static constexpr char _buttons[17]{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#', 'U', 'D', 'L', 'R', 'K' };
-      switch (item) {
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9':
-          char numberBuffer[10];
-          if (clockOutput.clockMode == ClockMode::TimerSetMin) {
-            int minVal = clockOutput.timerSetMin();
-            sprintf(numberBuffer, "%d%c", minVal, item);
-            minVal = atoi(numberBuffer);
-            minVal = clockOutput.timerSetMin(minVal);
-          } else if (clockOutput.clockMode == ClockMode::TimerSetMax) {
-            int maxVal = clockOutput.timerSetMax();
-            sprintf(numberBuffer, "%d%c", maxVal, item);
-            maxVal = atoi(numberBuffer);
-            maxVal = clockOutput.timerSetMax(maxVal);
-          }
-          break;
-        case '*':
-          clockOutput.clockMode = ClockMode::Clock;
-          break;
-        case '#':
-          if (clockOutput.clockMode == ClockMode::Clock) {
-            clockOutput.clockMode = ClockMode::TimerReady;
-            clockOutput.timerNext(false);
-          } else if (clockOutput.clockMode == ClockMode::TimerReady || clockOutput.clockMode == ClockMode::TimerSetMin || clockOutput.clockMode == ClockMode::TimerSetMax) {
-            clockOutput.timerNext();
-          }
-          break;
-        case 'U':
-          break;
-        case 'D':
-          break;
-        case 'L':
-          if(clockOutput.clockMode == ClockMode::TimerSetMax) {
-            clockOutput.clockMode = ClockMode::TimerSetMin;
-          }
-          break;
-        case 'R':
-          if(clockOutput.clockMode == ClockMode::TimerSetMin) {
-            clockOutput.clockMode = ClockMode::TimerSetMax;
-          }
-          break;
-        case 'K':
-          if(clockOutput.clockMode == ClockMode::TimerReady) {
-            clockOutput.clockMode = ClockMode::TimerRun;
-          } else if(clockOutput.clockMode == ClockMode::TimerRun ) {
-            clockOutput.clockMode = ClockMode::TimerStop;
-          } else if(clockOutput.clockMode == ClockMode::TimerStop ) {
-            clockOutput.clockMode = ClockMode::TimerReady;
-          }
-          break;
-        default:
-          break;
+    while (xQueueReceive(remote_queue, (void *)&item, QUEUE_RECEIVE_NO_WAIT) == pdTRUE) {
+      // Process remote control input
+      if (item >= '0' && item <= '9') {
+        handleTimerDigitInput(item);
+      } else if (item == '*') {
+        clockOutput.clockMode = ClockMode::Clock;
+      } else if (item == '#') {
+        handleHashButton();
+      } else if (item == 'L' || item == 'R') {
+        handleNavigationInput(item);
+      } else if (item == 'K') {
+        handleOkButton();
       }
+      // Note: 'U' and 'D' buttons currently have no implementation
     }
 
     switch (clockOutput.clockMode) {
@@ -484,11 +602,15 @@ void clockUpdate(void *param) {
         break;
     }
 
-    if (last_clockMode != clockOutput.clockMode) {
-      sprintf(msgBuffer, "clockUpdate - Clock Mode has changed from %s to %s", debugClockModeName[last_clockMode], debugClockModeName[clockOutput.clockMode]);
-      debugMessage(msgBuffer, logDebug);
+    // Protect display state variables with mutex
+    if (xSemaphoreTake(display_state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+      if (last_clockMode != clockOutput.clockMode) {
+        sprintf(msgBuffer, "clockUpdate - Clock Mode has changed from %s to %s", debugClockModeName[last_clockMode], debugClockModeName[clockOutput.clockMode]);
+        debugMessage(msgBuffer, logDebug);
 
-      last_clockMode = clockOutput.clockMode;
+        last_clockMode = clockOutput.clockMode;
+      }
+      xSemaphoreGive(display_state_mutex);
     }
 
 
@@ -499,7 +621,7 @@ void clockUpdate(void *param) {
       debugMessage("clockUpdate");
       loopCount = 0;
     }
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_CLOCK_UPDATE));
   }
 }
 
@@ -510,9 +632,17 @@ void setup() {
   Dbg_begin(115200);
 
   // Wait for the serial port to connect
-  while (DEBUG && !(Serial || Serial1)) {
-    delay(1);  // wait for serial port to connect.
-  }
+#if DEBUG
+  #if USE_PICOPROBE
+    while (!Serial1) { 
+      delay(1);  // wait for serial port to connect
+    }
+  #else
+    while (!Serial) { 
+      delay(1);  // wait for serial port to connect
+    }
+  #endif
+#endif
 
   // Print 5 blank lines on startup
   for (int i = 0; i < 5; i++) {
@@ -525,6 +655,7 @@ void setup() {
   // never attempt to connect to Wi-Fi. In the final version, there will be a task to
   // check the SD Card and reload the configuration file.
   if (clockSdCard.isCardPresent()) {
+    // Set initial config load time (protected before tasks start, but good practice)
     configLoadMillis = millis();
     // *** Archive old backup files ***
     clockSdCard.renameFile(logDebug, logDebugArchive);
@@ -542,15 +673,18 @@ void setup() {
   // Create Mutex before starting tasks
   sdcard_mutex = xSemaphoreCreateMutex();
   rtc_mutex = xSemaphoreCreateMutex();
+  config_mutex = xSemaphoreCreateMutex();
+  wifi_state_mutex = xSemaphoreCreateMutex();
+  display_state_mutex = xSemaphoreCreateMutex();
 
   debugMessage("setup -----------------------------");
 
   setup_complete = true;
 
-  xTaskCreate(checkSdCard, "SDCARD", 2048, nullptr, 1, nullptr);
-  xTaskCreate(checkRemote, "REMOTE", 2048, nullptr, 1, nullptr);
-  // xTaskCreate(handleQueueItems, "HANDLE_QUEUE", 2048, nullptr, 1, nullptr);
-  xTaskCreate(clockUpdate, "CLOCK", 2048, nullptr, 1, nullptr);
+  xTaskCreate(checkSdCard, "SDCARD", TASK_STACK_SIZE, nullptr, 1, nullptr);
+  xTaskCreate(checkRemote, "REMOTE", TASK_STACK_SIZE, nullptr, 1, nullptr);
+  // xTaskCreate(handleQueueItems, "HANDLE_QUEUE", TASK_STACK_SIZE, nullptr, 1, nullptr);
+  xTaskCreate(clockUpdate, "CLOCK", TASK_STACK_SIZE, nullptr, 1, nullptr);
 }
 
 /*****************************************************************************

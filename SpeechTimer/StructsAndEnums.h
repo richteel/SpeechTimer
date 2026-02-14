@@ -1,12 +1,6 @@
 #ifndef STRUCTSANDENUMS
 #define STRUCTSANDENUMS
 
-#if defined(ARDUINO_ARCH_MBED_RP2040) || defined(ARDUINO_ARCH_RP2040)
-#include <FreeRTOS.h>
-#include <task.h>
-#define xPortGetCoreID get_core_num
-#endif
-
 #include <map>
 #include <WiFi.h>
 
@@ -40,13 +34,7 @@ static std::map<WiFiMode_t, const char*> wifiModeName{
   { WIFI_AP, "Soft-AP Mode" },
   { WIFI_AP_STA, "Station + Soft-AP Mode" }
 };
-static std::map<eTaskState, const char*> eTaskStateName{
-  { eReady, "Ready" },
-  { eRunning, "Running" },
-  { eBlocked, "Blocked" },
-  { eSuspended, "Suspended" },
-  { eDeleted, "Deleted" }
-};
+// Note: eTaskStateName map removed - not used and requires FreeRTOS types
 static std::map<DebugLevels, const char*> debugLevelName{
   { DebugLevels::Verbose, "Verbose" },
   { DebugLevels::Info, "Info" },
@@ -66,21 +54,21 @@ static std::map<ClockMode, const char*> debugClockModeName{
 
 // Structure returned by https://worldtimeapi.org/api/ip and https://worldtimeapi.org/api/timezone/America/New_York
 struct InternetTimeStruct {
-  const char* abbreviation;           // "EDT"
-  const char* client_ip;              // "173.79.173.100"
-  const char* datetime;               // "2023-09-17T17:54:56.042498-04:00"
-  int day_of_week;                    // 0
-  int day_of_year;                    // 260
-  bool dst;                           // true
-  const char* dst_from;               // "2023-03-12T07:00:00+00:00"
-  int dst_offset;                     // 3600
-  const char* dst_until;              // "2023-11-05T06:00:00+00:00"
-  int raw_offset;                     // -18000
-  const char* timezone;               // "America/New_York"
-  long unixtime;                      // 1694987696
-  const char* utc_datetime;           // "2023-09-17T21:54:56.042498+00:00"
-  const char* utc_offset = "+00:00";  // "-04:00"
-  int week_number;                    // 37
+  char abbreviation[8];           // "EDT" - Changed from const char* to prevent dangling pointer
+  char client_ip[16];             // "173.79.173.100" - Changed from const char*
+  char datetime[64];              // "2023-09-17T17:54:56.042498-04:00" - Changed from const char*
+  int day_of_week;                // 0
+  int day_of_year;                // 260
+  bool dst;                       // true
+  char dst_from[64];              // "2023-03-12T07:00:00+00:00" - Changed from const char*
+  int dst_offset;                 // 3600
+  char dst_until[64];             // "2023-11-05T06:00:00+00:00" - Changed from const char*
+  int raw_offset;                 // -18000
+  char timezone[64];              // "America/New_York" - Changed from const char*
+  long unixtime;                  // 1694987696
+  char utc_datetime[64];          // "2023-09-17T21:54:56.042498+00:00" - Changed from const char*
+  char utc_offset[8];             // "-04:00" - Changed from const char*, default "+00:00"
+  int week_number;                // 37
 };
 
 struct Log_Entry {

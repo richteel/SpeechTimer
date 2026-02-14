@@ -9,6 +9,13 @@ Clk_Output::Clk_Output(Clk_SdCard *sdcard) {
   // _strip.updateType(NEOPIXEL_TYPE);
   // _strip.updateLength(NEOPIXEL_TOTAL_PIXELS);
   // _strip.setPin(PIN_NEOPIXEL_DATA);
+  
+  // Validate pointer parameter
+  if (sdcard == nullptr) {
+    _sdcard = nullptr;
+    return;
+  }
+  
   _sdcard = sdcard;
   _clockColor = _strip.Color(255, 255, 255);
   _timerColor = _strip.Color(255, 255, 255);
@@ -18,8 +25,11 @@ bool Clk_Output::begin() {
   pinMode(PIN_DETECTOR_LIGHT, INPUT);
   int lightLevel = analogRead(PIN_DETECTOR_LIGHT);
 
+  // Initialize rolling average array and cached sum
+  _lightValueSum = 0;
   for (int i = 0; i < _lightValuesLen; i++) {
     _lightValues[i] = lightLevel;
+    _lightValueSum += lightLevel;
   }
 
   _strip.begin();            // INITIALIZE NeoPixel strip object (REQUIRED)
@@ -135,6 +145,14 @@ void Clk_Output::neopixelTheaterChaseRainbow(int wait) {
   }
 }
 
+void Clk_Output::setWiFiConnectedWaitingForTime() {
+  // Set all neopixels to green to indicate WiFi connected but waiting for time sync
+  if (!_timeHasBeenSynced) {
+    _clockColor = _strip.Color(0, 255, 0);  // Green
+    neopixelColorWipe(_clockColor, 50);
+  }
+}
+
 void Clk_Output::oledClear() {
   _oledDisplay.clearDisplay();
 }
@@ -243,6 +261,12 @@ void Clk_Output::updateTime(const char *time) {
     return;
   }
 
+  // Mark time as synced when a valid time is received (not "--:--")
+  if (strcmp(time, "--:--") != 0 && !_timeHasBeenSynced) {
+    _timeHasBeenSynced = true;
+    _clockColor = _strip.Color(255, 255, 255);  // Return to white once time is synced
+  }
+
   // *** UPDATE NEOPIXELS ***
   updateClock(time, _clockColor);
 
@@ -274,8 +298,14 @@ void Clk_Output::updateTimer() {
   int secondsMax = _timerMax * 60;
   int secondsMid = (secondsMin + secondsMax) / 2;
 
-  // Set default value of the display buffer, which is the min:max times
-  sprintf(dispBuffer, "%02d:%02d", _timerMin, _timerMax);
+  // Set default value of the display buffer using optimized formatting
+  // Optimize: Manual formatting is faster than sprintf for simple cases
+  dispBuffer[0] = '0' + (_timerMin / 10);
+  dispBuffer[1] = '0' + (_timerMin % 10);
+  dispBuffer[2] = ':';
+  dispBuffer[3] = '0' + (_timerMax / 10);
+  dispBuffer[4] = '0' + (_timerMax % 10);
+  dispBuffer[5] = '\0';
 
   switch (clockMode) {
     case (ClockMode::TimerReady):
@@ -285,12 +315,19 @@ void Clk_Output::updateTimer() {
       break;
     case (ClockMode::TimerSetMin):
       if (!_digitsOn) {
-        sprintf(dispBuffer, "  :%02d", _timerMax);
+        // Optimize: Manual string construction
+        dispBuffer[0] = ' ';
+        dispBuffer[1] = ' ';
+        // dispBuffer[2] already ':'
+        // dispBuffer[3-5] already set
       }
       break;
     case (ClockMode::TimerSetMax):
       if (!_digitsOn) {
-        sprintf(dispBuffer, "%02d:  ", _timerMin);
+        // dispBuffer[0-2] already set
+        dispBuffer[3] = ' ';
+        dispBuffer[4] = ' ';
+        dispBuffer[5] = '\0';
       }
       break;
     case (ClockMode::TimerRun):
@@ -312,7 +349,13 @@ void Clk_Output::updateTimer() {
 
       minutes = seconds / 60;
       seconds = seconds % 60;
-      sprintf(dispBuffer, "%02d:%02d", minutes, seconds);
+      // Optimize: Manual formatting instead of sprintf
+      dispBuffer[0] = '0' + (minutes / 10);
+      dispBuffer[1] = '0' + (minutes % 10);
+      dispBuffer[2] = ':';
+      dispBuffer[3] = '0' + (seconds / 10);
+      dispBuffer[4] = '0' + (seconds % 10);
+      dispBuffer[5] = '\0';
       break;
     case (ClockMode::TimerStop):
       if (_timerEndMillis == 0) {
@@ -368,20 +411,20 @@ int Clk_Output::rollingAverageBrightness() {
     // Read Light Level and Adjust Brightness
     int lightLevel = analogRead(PIN_DETECTOR_LIGHT);
 
+    // Optimize: Use sliding window with cached sum
+    // Subtract old value from sum, add new value
+    _lightValueSum -= _lightValues[_lightValueOldestIdx];
     _lightValues[_lightValueOldestIdx] = lightLevel;
+    _lightValueSum += lightLevel;
+    
     _lightValueOldestIdx++;
     if (_lightValueOldestIdx >= _lightValuesLen) {
       _lightValueOldestIdx = 0;
     }
   }
 
-  long sumLightLevel = 0;
-
-  for (int i = 0; i < _lightValuesLen; i++) {
-    sumLightLevel += _lightValues[i];
-  }
-
-  int averageLightLevel = sumLightLevel / _lightValuesLen;
+  // Optimize: Use cached sum instead of recalculating every time (O(1) vs O(n))
+  int averageLightLevel = _lightValueSum / _lightValuesLen;
   int brightness = int((double(NEOPIXEL_MAX_BRIGHTNESS) / double(1023)) * averageLightLevel);
 
   if (brightness < NEOPIXEL_MIN_BRIGHTNESS) {

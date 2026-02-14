@@ -1,6 +1,14 @@
 #ifndef GLOBALDEFINES_H
 #define GLOBALDEFINES_H
 
+/*****************************************************************************
+ *                           FreeRTOS Configuration                          *
+ *****************************************************************************/
+// Must be defined BEFORE any FreeRTOS headers are included
+#if defined(ARDUINO_ARCH_MBED_RP2040) || defined(ARDUINO_ARCH_RP2040)
+#define __FREERTOS 1
+#endif
+
 /*
   ** HW Device Connection on Raspberry Pi Pico W **
     Pin GPIO  Device  Device Pin/Function
@@ -63,6 +71,43 @@
 #define NEOPIXEL_NUM_COLONS 2
 #define NEOPIXEL_MAX_BRIGHTNESS 120  // Valid Values are 0 to 255
 #define NEOPIXEL_MIN_BRIGHTNESS 5  // Valid Values are 0 to 255
+
+// ***** FREERTOS TASK CONFIGURATION *****
+// Task Stack Sizes (in words, not bytes)
+#define TASK_STACK_SIZE 2048
+
+// Task Delays (in milliseconds)
+#define TASK_DELAY_SETUP_WAIT 10
+#define TASK_DELAY_REMOTE_CHECK 250        // Fast polling for responsive remote control
+#define TASK_DELAY_SDCARD_CHECK 500        // Slow polling - SD card changes are infrequent
+#define TASK_DELAY_WIFI_CHECK_STABLE 1000  // Slow when WiFi is connected and stable
+#define TASK_DELAY_WIFI_CHECK_UNSTABLE 250 // Fast when connecting or reconnecting
+#define TASK_DELAY_CLOCK_UPDATE 100        // Fast for smooth display updates
+
+// Queue Configuration
+#define LOG_QUEUE_LENGTH 10
+#define REMOTE_QUEUE_LENGTH 5
+
+// Mutex Timeouts (in milliseconds)
+#define MUTEX_TIMEOUT_MS 100
+#define MUTEX_TIMEOUT_SHORT_MS 50
+#define MUTEX_TIMEOUT_QUICK_MS 10
+
+// Queue Send/Receive Timeouts (in milliseconds)
+#define QUEUE_SEND_TIMEOUT_MS 10
+#define QUEUE_RECEIVE_NO_WAIT 0
+
+// Retry Configuration
+#define MAX_SDCARD_WRITE_RETRIES 3
+#define MAX_WIFI_CONNECT_ATTEMPTS 5
+#define RETRY_DELAY_MS 25
+
+// HTTP and RTC Configuration
+#define HTTP_RESPONSE_BUFFER_SIZE 2048
+#define HTTP_CONNECTION_RETRY_DELAY_MS 100
+
+// Debug and Logging
+#define LOOPS_BEFORE_TASK_INFO_PRINT 100
 
 
 #endif  // GLOBALDEFINES_H
