@@ -1,188 +1,107 @@
 <!DOCTYPE html>
-<html>
+<html><head>
+<meta charset="UTF-8">
+<title>Speech Timer Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/dashboard.css">
+</head><body>
+<div class="container">
+<h1>&#x1F3A4; Speech Timer Dashboard</h1>
+<div class="subtitle">Real-time monitoring and control &bullet; <span id="refresh-status">Loading...</span></div>
 
-<head>
-	<!-- 
-			Example of Tabs with Automatic Activation
-			https://www.w3.org/WAI/ARIA/apg/patterns/tabs/examples/tabs-automatic/ 
-		-->
-	<title>Pico W</title>
-	<meta http-equiv="Content-type" content="text/html;charset=utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<link rel="stylesheet" href="css/main.css" />
-</head>
+<!-- Status Dashboard -->
+<div class="dashboard">
+  <div class="card">
+    <h3>&#x23F0; Current Time</h3>
+    <div class="value" id="time-value">--:--:--</div>
+    <div class="label" id="time-label">Loading...</div>
+  </div>
+  <div class="card">
+    <h3>&#127918; Current Mode</h3>
+    <div class="value" style="font-size:18px;" id="mode-name">Loading...</div>
+    <div class="status"><div class="status-dot status-offline" id="mode-dot"></div><span id="mode-status">Loading...</span></div>
+  </div>
+  <div class="card">
+    <h3>&#x1F321; CPU Temperature</h3>
+    <div class="value" id="temp-c">--&deg;C</div>
+    <div class="label" id="temp-f">--&deg;F</div>
+  </div>
+  <div class="card">
+    <h3>&#x1F3A8; Display Color</h3>
+    <div><span class="color-preview" style="background:rgb(128,128,128);" id="color-preview"></span></div>
+    <div class="label" id="color-label">RGB(-, -, -)</div>
+  </div>
+</div>
 
-<body>
-	<h1>Pico W HTTP Server</h1>
-	<br />
-	<p class="dotted">This is a Pico W running an HTTP server with CircuitPython.</p>
-	<br />
+<!-- Speech Timer Control -->
+<div class="section">
+  <h2>&#x23F1; Speech Timer Control</h2>
+  <form method="POST" action="/">
+    <div class="form-group">
+      <label>Min Time:</label>
+      <input type="number" name="MIN_TIME" value="5" min="1" max="60"> minutes
+    </div>
+    <div class="form-group">
+      <label>Max Time:</label>
+      <input type="number" name="MAX_TIME" value="7" min="1" max="60"> minutes
+    </div>
+    <button class="success" type="button" data-submit="true" name="TIMER" value="START" id="timer-btn">&#x25B6; Start Timer</button>
+  </form>
+</div>
 
-	<div class="tabs">
-		<h3 id="tablist-1">Options</h3>
-		<div role="tablist" aria-labelledby="tablist-1" class="automatic">
-			<button id="tab-1" type="button" role="tab" aria-selected="true" aria-controls="tabpanel-1">
-				<span class="focus">Speech Timer</span>
-			</button>
-			<button id="tab-3" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-2" tabindex="-1">
-				<span class="focus">Clock</span>
-			</button>
-			<button id="tab-3" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-3" tabindex="-1">
-				<span class="focus">Pico LED</span>
-			</button>
-			<button id="tab-4" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-4" tabindex="-1">
-				<span class="focus">Information</span>
-			</button>
-			<button id="tab-5" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-5" tabindex="-1">
-				<span class="focus">Test</span>
-			</button>
-			<button id="tab-6" type="button" role="tab" aria-selected="false" aria-controls="tabpanel-6" tabindex="-1">
-				<span class="focus">Remote</span>
-			</button>
-		</div>
+<!-- Clock Color Control -->
+<div class="section">
+  <h2>&#x1F3A8; Clock Color Settings</h2>
+  <form method="POST" action="/">
+    <div class="form-group">
+      <label>Red:</label>
+      <input type="number" id="red-input" name="RED" value="255" min="0" max="255">
+    </div>
+    <div class="form-group">
+      <label>Green:</label>
+      <input type="number" id="green-input" name="GREEN" value="255" min="0" max="255">
+    </div>
+    <div class="form-group">
+      <label>Blue:</label>
+      <input type="number" id="blue-input" name="BLUE" value="255" min="0" max="255">
+    </div>
+    <button type="button" data-submit="true" name="CLOCK" value="SET">Apply Clock Color</button>
+  </form>
+</div>
 
-		<div id="tabpanel-1" role="tabpanel" tabindex="0" aria-labelledby="tab-1" class="is-hidden">
-			<div class="form_div">
-				<h2>Speech Timer</h2>
-				<br />
-				<form accept-charset="utf-8" method="POST">
-					<input type="hidden" name="TAB" value="1" />
-					<label for="MIN_TIME">MIN Time:</label><input type="text" id="MIN_TIME" name="MIN_TIME" value="{min_time}" /><br />
-					<label for="MAX_TIME">MAX Time:</label><input type="text" id="MAX_TIME" name="MAX_TIME" value="{max_time}" /><br />
-					<br />
-					<button class="button" name="SPEECH_TIMER" value="{timer_button_text}" type="submit">{timer_button_text}</button>
-				</form>
-			</div>
-		</div>
-		<div id="tabpanel-2" role="tabpanel" tabindex="0" aria-labelledby="tab-2" class="is-hidden">
-			<div class="form_div">
-				<h2>Clock</h2>
-				<br />
-				<form accept-charset="utf-8" method="POST">
-					<input type="hidden" name="TAB" value="2" />
-					<label for="RED">RED:</label><input type="text" id="RED" name="RED" value="{neo_red}" /><br />
-					<label for="GREEN">GREEN:</label><input type="text" id="GREEN" name="GREEN"
-						value="{neo_green}" /><br />
-					<label for="BLUE">BLUE:</label><input type="text" id="BLUE" name="BLUE" value="{neo_blue}" /><br />
-					<button class="button" name="CLOCK" value="" type="submit">Update</button>
-				</form>
-			</div>
-		</div>
-		<div id="tabpanel-3" role="tabpanel" tabindex="0" aria-labelledby="tab-3" class="is-hidden">
-			<div class="form_div">
-				<h2>Control the LED on the Pico W</h2>
-				<br />
-				<form accept-charset="utf-8" method="POST">
-					<input type="hidden" name="TAB" value="3" />
-					<button class="button" name="LED" value="ON" type="submit">LED ON</button><br />
-					<button class="button" name="LED" value="OFF" type="submit">LED OFF</button>
-				</form>
-			</div>
-		</div>
-		<div id="tabpanel-4" role="tabpanel" tabindex="0" aria-labelledby="tab-4" class="is-hidden">
-			<div class="form_div">
-				<h2>Pico Information</h2>
-				<br />
-				<p>
-					<span class="info_label">Server Directory:</span><span class="info_value">{server_folder}</span><br />
-					<span class="info_label">CPU Temperature:</span><span class="info_value">{cpu_temp_c}&degC / {cpu_temp_f}&degF</span><br />
-					<span class="info_label">CPU Frequency:</span><span class="info_value">{cpu_freq} Hz</span><br />
-					<span class="info_label">Last Reset Reason:</span><span class="info_value">{reset_reason}</span><br />
-					<span class="info_label">UID:</span><span class="info_value">{cpu_uid}</span><br />
-					<span class="info_label">Voltage:</span><span class="info_value">{cpu_voltage} V</span><br />
-					<span class="info_label">Memory Total:</span><span class="info_value">{mem_total} bytes</span><br />
-					<span class="info_label">Memory Free:</span><span class="info_value">{mem_percent_free}% {mem_free} bytes</span><br />
-					<span class="info_label">Memory Used:</span><span class="info_value">{mem_percent_used}% {mem_used} bytes</span></span><br />
-					
-				</p>
-				<br />
-				<form accept-charset="utf-8" method="POST">
-					<input type="hidden" name="TAB" value="4" />
-					<button class="button" name="INFO" value="REFRESH" type="submit">REFRESH</button>
-				</form>
-			</div>
-		</div>
-		<div id="tabpanel-5" role="tabpanel" tabindex="0" aria-labelledby="tab-5" class="is-hidden">
-			<div class="form_div">
-				<h2>Test the Neopixels</h2>
-				<br />
-				<form accept-charset="utf-8" method="POST">
-					<input type="hidden" name="TAB" value="5" />
-					<button class="button" name="TEST" value="TEST" type="submit">TEST</button>
-				</form>
-			</div>
-		</div>
-		<div id="tabpanel-6" role="tabpanel" tabindex="0" aria-labelledby="tab-6" class="is-hidden">
-			<div class="form_div">
-				<h2>Remote</h2>
-				<br />
-				<form accept-charset="utf-8" method="POST">
-					<input type="hidden" name="TAB" value="6" />
-					<div class="remote">
-						<button class="button_white" name="REMOTE" value="1" type="submit">1</button>
-						<button class="button_white" name="REMOTE" value="2" type="submit">2</button>
-						<button class="button_white" name="REMOTE" value="3" type="submit">3</button>
-					</div>
-					<div class="remote">
-						<button class="button_white" name="REMOTE" value="4" type="submit">4</button>
-						<button class="button_white" name="REMOTE" value="5" type="submit">5</button>
-						<button class="button_white" name="REMOTE" value="6" type="submit">6</button>
-					</div>
-					<div class="remote">
-						<button class="button_white" name="REMOTE" value="7" type="submit">7</button>
-						<button class="button_white" name="REMOTE" value="8" type="submit">8</button>
-						<button class="button_white" name="REMOTE" value="9" type="submit">9</button>
-					</div>
-					<div class="remote">
-						<button class="button_red" name="REMOTE" value="*" type="submit">&#128948;</button>
-						<button class="button_white" name="REMOTE" value="0" type="submit">0</button>
-						<button class="button_red" name="REMOTE" value="#" type="submit">#</button>
-					</div>
-					<div class="remote remote_arrows_row_1">
-						<div class="button_none">
-							&nbsp;
-						</div>
-						<div class="white_back">
-							<button class="button_blue" name="REMOTE" value="UP" type="submit">&uarr;</button>
-						</div>
-						<div class="button_none">
-							&nbsp;
-						</div>
-					</div>
-					<div class="remote remote_arrows_row_2">
-						<div class="white_back">
-							<button class="button_blue" name="REMOTE" value="LEFT" type="submit">&larr;</button>
-						</div>
-						<div class="white_back">
-							<button class="button_red" name="REMOTE" value="OK" type="submit">OK</button>
-						</div>
-						<div class="white_back">
-							<button class="button_blue" name="REMOTE" value="RIGHT" type="submit">&rarr;</button>
-						</div>
-					</div>
-					<div class="remote remote_arrows_row_3">
-						<div class="button_none">
-							&nbsp;
-						</div>
-						<div class="white_back">
-							<button class="button_blue" name="REMOTE" value="DOWN" type="submit">&darr;</button>
-						</div>
-						<div class="button_none">
-							&nbsp;
-						</div>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
+<!-- System Controls -->
+<div class="section">
+  <h2>&#9881;&#65039; System Controls</h2>
+  <form method="POST" action="/" style="display:inline;">
+    <button class="success" type="button" data-submit="true" name="LED" value="ON" id="led-btn">&#x1F4A1; LED On</button>
+  </form>
+  <form method="POST" action="/" style="display:inline;">
+    <button type="button" data-submit="true" name="TEST" value="START">&#128300; Start Test Mode</button>
+  </form>
+  <form method="POST" action="/" style="display:inline;">
+    <button type="button" data-submit="true" name="MODE" value="CLOCK">&#x1F551; Show Clock</button>
+  </form>
+</div>
 
-	<br />
-	<p>This server has served {visits} requests.</p>
+<!-- System Information -->
+<div class="section">
+  <h2>&#128200; System Information</h2>
+  <div class="info-grid">
+    <div class="info-item"><span class="info-label">WiFi Status:</span><span class="info-value" id="wifi-status">Loading...</span></div>
+    <div class="info-item"><span class="info-label">IP Address:</span><span class="info-value" id="ip-addr">Loading...</span></div>
+    <div class="info-item"><span class="info-label">Requests:</span><span class="info-value" id="request-count">0</span></div>
+    <div class="info-item"><span class="info-label">LED Status:</span><span class="info-value" id="led-status">Loading...</span></div>
+  </div>
+</div>
 
-	<script src="js/tabs.js"></script>
-	<script>
-		selected_tab = {selected_tab};
-	</script>
-</body>
+<!-- API Links -->
+<div class="api-links">
+  <strong>JSON API Endpoints:</strong><br>
+  <a href="/api/status" target="_blank">Status</a> |
+  <a href="/api/system" target="_blank">System</a> |
+  <a href="/api/time" target="_blank">Time</a>
+</div>
 
-</html>
+</div>
+<script src="/js/dashboard.js"></script>
+</body></html>

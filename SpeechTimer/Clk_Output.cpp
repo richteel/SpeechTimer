@@ -153,6 +153,15 @@ void Clk_Output::setWiFiConnectedWaitingForTime() {
   }
 }
 
+void Clk_Output::setSdCardError(bool hasError) {
+  if (hasError) {
+    _clockColor = _strip.Color(255, 0, 0);  // Red
+  } else {
+    _clockColor = _strip.Color(255, 255, 255);  // White
+  }
+  neopixelColorWipe(_clockColor, 50);
+}
+
 void Clk_Output::oledClear() {
   _oledDisplay.clearDisplay();
 }

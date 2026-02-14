@@ -108,6 +108,8 @@ void esploop1(void *pvParameters) {
 #include "Clk_Wifi.h"    // Higher level Wi-Fi functions
 #include "Clk_Rtc.h"
 #include "StructsAndEnums.h"
+#include "ApiController.h"  // Business logic API layer
+#include "WebServer.h"      // Web server transport layer
 
 /*****************************************************************************
  *                               Other Includes                              *
@@ -163,6 +165,10 @@ Clk_Output clockOutput = Clk_Output(&clockSdCard);
 Clk_Rtc clockRtc = Clk_Rtc(&clockSdCard, &clockWifi);
 Clk_Remote clockRemote = Clk_Remote();
 ClockMode last_clockMode = ClockMode::Clock;
+
+// API and Web Server Objects
+ApiController apiController = ApiController();
+WebServer webServer = WebServer(80);
 
 /*****************************************************************************
  *                                 LOG FILES                                 *
@@ -309,18 +315,49 @@ void checkSdCard(void *param) {
 
   while (1) {
     bool cardPresent = false;
+    bool configPresent = false;
     unsigned long currentConfigLoadMillis = 0;
+    static bool lastSdError = false;
     
     if (xSemaphoreTake(sdcard_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
       cardPresent = clockSdCard.isCardPresent();
+      if (cardPresent) {
+        configPresent = clockSdCard.fileExists(clockSdCard.sdCardConfigFullName);
+      }
       xSemaphoreGive(sdcard_mutex);
     } else {
       continue;
     }
+
+    bool sdError = !cardPresent || !configPresent;
+    if (sdError != lastSdError) {
+      if (xSemaphoreTake(display_state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+        bool wifiConnected = false;
+        bool timeSet = false;
+        if (xSemaphoreTake(wifi_state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+          wifiConnected = clockWifi.isWiFiConnected();
+          xSemaphoreGive(wifi_state_mutex);
+        }
+        if (xSemaphoreTake(rtc_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+          timeSet = clockRtc.timeIsSet();
+          xSemaphoreGive(rtc_mutex);
+        }
+
+        if (sdError) {
+          clockOutput.setSdCardError(true);
+        } else if (wifiConnected && !timeSet) {
+          clockOutput.setWiFiConnectedWaitingForTime();
+        } else {
+          clockOutput.setSdCardError(false);
+        }
+        xSemaphoreGive(display_state_mutex);
+      }
+      lastSdError = sdError;
+    }
     
     // Protect config state variables with mutex
     if (xSemaphoreTake(config_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
-      if (!cardPresent) {
+      if (!cardPresent || !configPresent) {
         last_configLoadMillis = 0;
         configLoadMillis = 0;
       } else if (configLoadMillis == 0) {
@@ -490,6 +527,62 @@ void checkWiFi() {
                        pdMS_TO_TICKS(TASK_DELAY_WIFI_CHECK_STABLE) :   // 1000ms when connected
                        pdMS_TO_TICKS(TASK_DELAY_WIFI_CHECK_UNSTABLE); // 250ms when connecting
     vTaskDelay(delay);
+  }
+}
+
+/*****************************************************************************
+ *                              WEB SERVER TASK                              *
+ *****************************************************************************/
+void handleWebServer(void *param) {
+  // Make certain that setup has completed
+  while (!setup_complete) {
+    vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_SETUP_WAIT));
+  }
+
+  int loopCount = 0;
+  bool serverStarted = false;
+  unsigned long lastWifiOkMillis = 0;
+
+  debugMessage("handleWebServer - Task started");
+
+  while (1) {
+    // Check if WiFi is connected
+    bool wifiConnected = clockWifi.isWiFiConnected();
+    if (wifiConnected) {
+      lastWifiOkMillis = millis();
+    }
+
+    // Start web server when WiFi connects
+    if (wifiConnected && !serverStarted) {
+      webServer.begin(&apiController, &clockSdCard);
+      serverStarted = true;
+      debugMessage("handleWebServer - Web server started");
+    }
+
+    // Stop web server only after WiFi has been down for a while (debounce)
+    if (!wifiConnected && serverStarted) {
+      unsigned long now = millis();
+      if (lastWifiOkMillis != 0 && (now - lastWifiOkMillis) > 5000) {
+        webServer.stop();
+        serverStarted = false;
+        debugMessage("handleWebServer - Web server stopped (WiFi disconnected)");
+      }
+    }
+
+    // Handle client requests
+    if (serverStarted) {
+      webServer.handleClient();
+    }
+
+    loopCount++;
+    // Print message with stack usage once every ten loops
+    if (loopCount > waitLoopsToPrintTaskInfo) {
+      debugMessage("handleWebServer");
+      loopCount = 0;
+    }
+
+    // Small delay to avoid blocking
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
@@ -666,6 +759,11 @@ void setup() {
   clockRtc.begin();
   // END: RTC
 
+  // START: API Controller and Web Server
+  apiController.begin(&clockOutput, &clockWifi, &clockRtc, &clockSdCard);
+  // Mutexes will be set after they're created
+  // END: API Controller and Web Server
+
   // Create Queue
   remote_queue = xQueueCreate(remote_queue_len, sizeof(char));
   log_queue = xQueueCreate(log_queue_len, sizeof(Log_Entry));
@@ -677,6 +775,9 @@ void setup() {
   wifi_state_mutex = xSemaphoreCreateMutex();
   display_state_mutex = xSemaphoreCreateMutex();
 
+  // Set mutexes for API controller (now that they exist)
+  apiController.setMutexes(rtc_mutex, wifi_state_mutex, display_state_mutex, config_mutex);
+
   debugMessage("setup -----------------------------");
 
   setup_complete = true;
@@ -685,6 +786,7 @@ void setup() {
   xTaskCreate(checkRemote, "REMOTE", TASK_STACK_SIZE, nullptr, 1, nullptr);
   // xTaskCreate(handleQueueItems, "HANDLE_QUEUE", TASK_STACK_SIZE, nullptr, 1, nullptr);
   xTaskCreate(clockUpdate, "CLOCK", TASK_STACK_SIZE, nullptr, 1, nullptr);
+  xTaskCreate(handleWebServer, "WEBSERVER", TASK_STACK_SIZE, nullptr, 1, nullptr);
 }
 
 /*****************************************************************************

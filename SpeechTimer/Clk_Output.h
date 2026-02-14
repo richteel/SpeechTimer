@@ -59,6 +59,8 @@ public:
 
   void setWiFiConnectedWaitingForTime();
 
+  void setSdCardError(bool hasError);
+
   ClockMode clockMode = ClockMode::Clock;
 
 private:

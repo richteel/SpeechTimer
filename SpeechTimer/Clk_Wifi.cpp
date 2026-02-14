@@ -128,8 +128,14 @@ bool Clk_Wifi::hasIpAddress() {
 }
 
 bool Clk_Wifi::isWiFiConnected() {
-  // Check if WiFi status shows connected
-  return WiFi.status() == WL_CONNECTED;
+  // Connected only when in station mode, WiFi reports connected, and IP is valid
+  if (wifiMode != WIFI_STA) {
+    return false;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+  return hasIpAddress();
 }
 
 // ***** PRIVATE *****
