@@ -1,9 +1,21 @@
 // Speech Timer Dashboard JavaScript
+
+// Helper function to safely update an input value without disturbing user input
+function safeUpdateInput(elementId, value) {
+  const element = document.getElementById(elementId);
+  if (element && document.activeElement !== element) {
+    // Only update if the user is not currently editing this field
+    element.value = value;
+  }
+}
+
 function updateDashboard() {
   // Fetch all dashboard data in one request
   fetch('/api/dashboard')
     .then(r => r.json())
     .then(d => {
+      console.log('Dashboard data received:', d);
+      
       // Update mode
       const modeName = d.mode_name || d.mode || 'Unknown';
       document.getElementById('mode-name').textContent = modeName;
@@ -13,31 +25,18 @@ function updateDashboard() {
       document.getElementById('mode-dot').className = 'status-dot ' + (running ? 'status-online' : 'status-offline');
       document.getElementById('mode-status').textContent = running ? 'Timer Running' : 'Ready';
       
-      // Update LED status
-      const led = (typeof d.led_on === 'boolean') ? d.led_on : (d.led === 'on');
-      document.getElementById('led-status').textContent = led ? 'On' : 'Off';
-      
-      // Update LED button
-      const btn = document.getElementById('led-btn');
-      btn.className = led ? 'danger' : 'success';
-      btn.value = led ? 'OFF' : 'ON';
-      btn.innerHTML = (led ? '&#x1F4A1;' : '&#x1F4A1;') + ' LED ' + (led ? 'Off' : 'On');
-      
       // Update timer button
       const tbtn = document.getElementById('timer-btn');
       tbtn.className = running ? 'danger' : 'success';
       tbtn.value = running ? 'STOP' : 'START';
       tbtn.innerHTML = (running ? '&#x23F9;' : '&#x25B6;') + ' ' + (running ? 'Stop' : 'Start') + ' Timer';
       
-      // Update clock color (optional)
+      // Update clock color (optional) - only update preview and label, not input fields
       if (d.clock_color) {
         const c = d.clock_color;
         document.getElementById('color-preview').style.background = 'rgb(' + c.red + ',' + c.green + ',' + c.blue + ')';
         document.getElementById('color-label').textContent = 'RGB(' + c.red + ', ' + c.green + ', ' + c.blue + ')';
-        // Update color input fields
-        document.getElementById('red-input').value = c.red;
-        document.getElementById('green-input').value = c.green;
-        document.getElementById('blue-input').value = c.blue;
+        // Do NOT update red-input, green-input, blue-input - let user retain their input values
       }
 
       // Update temperature
@@ -75,11 +74,47 @@ updateDashboard();
 // Submit forms only on explicit button clicks
 function wireFormButtons() {
   const buttons = document.querySelectorAll('button[data-submit="true"]');
+  console.log('wireFormButtons - Found ' + buttons.length + ' buttons to wire');
+  
   buttons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (btn.form) {
-        btn.form.submit();
+    const btnName = btn.getAttribute('name');
+    const btnId = btn.getAttribute('id') || '(no id)';
+    console.log('wireFormButtons - Wiring button:', btnId, 'name:', btnName);
+    
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      
+      if (!btn.form) {
+        console.error('Button click: No form found for button', btnName, btnId);
+        return;
       }
+      
+      // Serialize all form elements into URLSearchParams
+      const formData = new FormData(btn.form);
+      
+      // Add the button's name and value to the form data
+      const btnValue = btn.getAttribute('value');
+      formData.set(btnName, btnValue);
+      
+      // Convert FormData to URL-encoded format (application/x-www-form-urlencoded)
+      const params = new URLSearchParams(formData);
+      
+      console.log('Button click: ' + btnName + ' = ' + btnValue + ', Submitting form with data:', params.toString());
+      
+      // Submit using fetch to ensure proper encoding
+      fetch(btn.form.action, {
+        method: btn.form.method,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params.toString()
+      })
+      .then(response => {
+        console.log(btnName + ' - Form submitted successfully, status:', response.status);
+        // After successful submission, refresh the dashboard
+        updateDashboard();
+      })
+      .catch(error => console.error(btnName + ' - Form submission error:', error));
     });
   });
 }

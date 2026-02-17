@@ -3,6 +3,7 @@
 
 #include <WiFi.h>
 #include "config.h"
+#include "DbgPrint.h"
 
 class Clk_Wifi {
 public:

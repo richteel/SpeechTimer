@@ -52,7 +52,8 @@ static std::map<ClockMode, const char*> debugClockModeName{
   { ClockMode::TestRainbow, "Test Rainbow" }
 };
 
-// Structure returned by https://worldtimeapi.org/api/ip and https://worldtimeapi.org/api/timezone/America/New_York
+// Structure for storing time information from NTP and timezone data from ip-api.com
+// Previously used with WorldTimeAPI (now sunset), currently populated from NTP + IP geolocation
 struct InternetTimeStruct {
   char abbreviation[8];           // "EDT" - Changed from const char* to prevent dangling pointer
   char client_ip[16];             // "173.79.173.100" - Changed from const char*

@@ -24,16 +24,16 @@ void WebServer::begin(ApiController* apiController, Clk_SdCard* sdcard) {
   
   if (_initialized) {
     _server.begin();
-    DEBUGV("%s begin - Server started on port %d\n", FILE_NAME_WEB, _port);
+    DBG_VERBOSE("%s begin - Server started on port %d\n", FILE_NAME_WEB, _port);
   } else {
-    DEBUGV("%s begin - Failed to initialize (null pointers)\n", FILE_NAME_WEB);
+    DBG_VERBOSE("%s begin - Failed to initialize (null pointers)\n", FILE_NAME_WEB);
   }
 }
 
 void WebServer::stop() {
   _server.stop();
   _initialized = false;
-  DEBUGV("%s stop - Server stopped\n", FILE_NAME_WEB);
+  DBG_VERBOSE("%s stop - Server stopped\n", FILE_NAME_WEB);
 }
 
 bool WebServer::isRunning() {
@@ -48,23 +48,26 @@ void WebServer::handleClient() {
   WiFiClient client = _server.accept();
   if (!client) return;
   
-  DEBUGV("%s handleClient - New client connected\n", FILE_NAME_WEB);
+  DBG_VERBOSE("%s handleClient - New client connected\n", FILE_NAME_WEB);
   _requestCount++;
+  DBG_VERBOSE("%s handleClient - Request count: %d\n", FILE_NAME_WEB, _requestCount);
   
-  // Wait for data with timeout
-  unsigned long timeout = millis() + 5000;
+  // Wait for data with extended timeout to handle WiFi restart periods
+  // Increased from 5s to 10s to allow more resilience during WiFi reconnection
+  unsigned long timeout = millis() + 10000;
   while (!client.available() && millis() < timeout) {
     delay(1);
   }
   
   if (client.available()) {
+    DBG_VERBOSE("%s handleClient - Client has data, processing request\n", FILE_NAME_WEB);
     handleRequest(client);
   } else {
-    DEBUGV("%s handleClient - Timeout waiting for data\n", FILE_NAME_WEB);
+    DBG_VERBOSE("%s handleClient - Timeout waiting for data\n", FILE_NAME_WEB);
   }
   
   client.stop();
-  DEBUGV("%s handleClient - Client disconnected\n", FILE_NAME_WEB);
+  DBG_VERBOSE("%s handleClient - Client disconnected\n", FILE_NAME_WEB);
 }
 
 void WebServer::handleRequest(WiFiClient& client) {
@@ -73,12 +76,12 @@ void WebServer::handleRequest(WiFiClient& client) {
   char body[512] = {0};
   
   if (!parseHttpRequest(client, method, path, body, sizeof(body))) {
-    DEBUGV("%s handleRequest - Failed to parse request\n", FILE_NAME_WEB);
+    DBG_VERBOSE("%s handleRequest - Failed to parse request\n", FILE_NAME_WEB);
     handle404(client);
     return;
   }
   
-  DEBUGV("%s handleRequest - %s %s\n", FILE_NAME_WEB, method, path);
+  DBG_VERBOSE("%s handleRequest - %s %s\n", FILE_NAME_WEB, method, path);
   
   // Route the request
   if (strcmp(method, "GET") == 0) {
@@ -97,15 +100,18 @@ void WebServer::handleRequest(WiFiClient& client) {
     } else if (strcmp(path, "/js/dashboard.js") == 0) {
       serveFile(client, "wwwroot/js/dashboard.js", "application/javascript");
     } else {
+      DBG_VERBOSE("%s handleRequest - Unknown GET path: %s\n", FILE_NAME_WEB, path);
       handle404(client);
     }
   } else if (strcmp(method, "POST") == 0) {
     if (strcmp(path, "/") == 0) {
       handlePostRoot(client, body);
     } else {
+      DBG_VERBOSE("%s handleRequest - Unknown POST path: %s\n", FILE_NAME_WEB, path);
       handle404(client);
     }
   } else {
+    DBG_VERBOSE("%s handleRequest - Unknown method: %s\n", FILE_NAME_WEB, method);
     handle404(client);
   }
 }
@@ -114,7 +120,41 @@ void WebServer::handleRequest(WiFiClient& client) {
 
 void WebServer::handleGetRoot(WiFiClient& client) {
   // Serve static index.html from SD card
-  serveFile(client, "wwwroot/index.html", "text/html");
+  DBG_VERBOSE("%s handleGetRoot - Attempting to serve index.html from SD card\n", FILE_NAME_WEB);
+  if (!_sdcard) {
+    DBG_VERBOSE("%s handleGetRoot - ERROR: SD Card not initialized!\n", FILE_NAME_WEB);
+    sendHttpHeader(client, "text/html", 503, "Service Unavailable");
+    client.println("<html><body>");
+    client.println("<h1>503 Service Unavailable</h1>");
+    client.println("<p>SD Card not initialized. Please check SD card connection.</p>");
+    client.println("</body></html>");
+    return;
+  }
+  
+  // Try to serve index.html with multiple path variants
+  if (_sdcard->fileExists("wwwroot/index.html")) {
+    serveFile(client, "wwwroot/index.html", "text/html");
+  } else if (_sdcard->fileExists("/wwwroot/index.html")) {
+    serveFile(client, "/wwwroot/index.html", "text/html");
+  } else if (_sdcard->fileExists("index.html")) {
+    serveFile(client, "index.html", "text/html");
+  } else if (_sdcard->fileExists("/index.html")) {
+    serveFile(client, "/index.html", "text/html");
+  } else {
+    DBG_VERBOSE("%s handleGetRoot - index.html not found on SD card\n", FILE_NAME_WEB);
+    sendHttpHeader(client, "text/html", 404, "Not Found");
+    client.println("<html><body>");
+    client.println("<h1>404 Not Found</h1>");
+    client.println("<p>index.html not found on SD card at: wwwroot/index.html</p>");
+    client.println("<p>Available API endpoints:</p>");
+    client.println("<ul>");
+    client.println("<li>/api/dashboard - Dashboard data</li>");
+    client.println("<li>/api/status - Status information</li>");
+    client.println("<li>/api/system - System information</li>");
+    client.println("<li>/api/time - Current time</li>");
+    client.println("</ul>");
+    client.println("</body></html>");
+  }
 }
 
 void WebServer::handlePostRoot(WiFiClient& client, const char* body) {
@@ -123,21 +163,18 @@ void WebServer::handlePostRoot(WiFiClient& client, const char* body) {
   char values[10][64];
   int paramCount = 0;
   
+  DBG_VERBOSE("%s handlePostRoot - Received body: '%s'\n", FILE_NAME_WEB, body);
+  DBG_VERBOSE("%s handlePostRoot - Body length: %d\n", FILE_NAME_WEB, strlen(body));
+  
   parseFormData(body, params, values, paramCount, 10);
   
-  DEBUGV("%s handlePostRoot - Parsed %d parameters\n", FILE_NAME_WEB, paramCount);
+  DBG_VERBOSE("%s handlePostRoot - Parsed %d parameters from body\n", FILE_NAME_WEB, paramCount);
+  for (int i = 0; i < paramCount; i++) {
+    DBG_VERBOSE("%s handlePostRoot - Param[%d]: '%s' = '%s'\n", FILE_NAME_WEB, i, params[i], values[i]);
+  }
   
   // Process form data
-  char value[64];
-  
-  // LED control
-  if (getUrlParamValue(params, values, paramCount, "LED", value, sizeof(value)) >= 0) {
-    if (strcmp(value, "ON") == 0) {
-      _apiController->setLedState(true);
-    } else if (strcmp(value, "OFF") == 0) {
-      _apiController->setLedState(false);
-    }
-  }
+  char value[64] = {0};
   
   // Clock color
   if (getUrlParamValue(params, values, paramCount, "CLOCK", value, sizeof(value)) >= 0) {
@@ -160,26 +197,46 @@ void WebServer::handlePostRoot(WiFiClient& client, const char* body) {
   
   // Timer control
   if (getUrlParamValue(params, values, paramCount, "TIMER", value, sizeof(value)) >= 0) {
+    DBG_VERBOSE("%s handlePostRoot - TIMER parameter found: %s\n", FILE_NAME_WEB, value);
     if (strcmp(value, "START") == 0) {
       int minTime = 5, maxTime = 7;
-      char timeVal[16];
+      char timeVal[16] = {0};
       
-      if (getUrlParamValue(params, values, paramCount, "MIN_TIME", timeVal, sizeof(timeVal)) >= 0) {
+      int minIdx = getUrlParamValue(params, values, paramCount, "MIN_TIME", timeVal, sizeof(timeVal));
+      if (minIdx >= 0) {
         minTime = atoi(timeVal);
-      }
-      if (getUrlParamValue(params, values, paramCount, "MAX_TIME", timeVal, sizeof(timeVal)) >= 0) {
-        maxTime = atoi(timeVal);
+        DBG_VERBOSE("%s handlePostRoot - MIN_TIME found at index %d: '%s' = %d\n", FILE_NAME_WEB, minIdx, timeVal, minTime);
+      } else {
+        DBG_VERBOSE("%s handlePostRoot - MIN_TIME not found, using default: %d\n", FILE_NAME_WEB, minTime);
       }
       
+      int maxIdx = getUrlParamValue(params, values, paramCount, "MAX_TIME", timeVal, sizeof(timeVal));
+      if (maxIdx >= 0) {
+        maxTime = atoi(timeVal);
+        DBG_VERBOSE("%s handlePostRoot - MAX_TIME found at index %d: '%s' = %d\n", FILE_NAME_WEB, maxIdx, timeVal, maxTime);
+      } else {
+        DBG_VERBOSE("%s handlePostRoot - MAX_TIME not found, using default: %d\n", FILE_NAME_WEB, maxTime);
+      }
+      
+      DBG_VERBOSE("%s handlePostRoot - Starting timer: minTime=%d, maxTime=%d\n", FILE_NAME_WEB, minTime, maxTime);
       _apiController->startTimer(minTime, maxTime);
     } else if (strcmp(value, "STOP") == 0) {
+      DBG_VERBOSE("%s handlePostRoot - Stopping timer\n", FILE_NAME_WEB);
       _apiController->stopTimer();
     }
+  } else {
+    DBG_VERBOSE("%s handlePostRoot - TIMER parameter NOT found\n", FILE_NAME_WEB);
   }
   
   // Test mode
   if (getUrlParamValue(params, values, paramCount, "TEST", value, sizeof(value)) >= 0) {
-    _apiController->setClockMode(ClockMode::TestColors);
+    DBG_VERBOSE("%s handlePostRoot - TEST parameter found: %s\n", FILE_NAME_WEB, value);
+    if (strcmp(value, "START") == 0) {
+      DBG_VERBOSE("%s handlePostRoot - Starting Test Mode (TestColors)\n", FILE_NAME_WEB);
+      _apiController->setClockMode(ClockMode::TestColors);
+    } else {
+      DBG_VERBOSE("%s handlePostRoot - WARNING: Unknown TEST value: %s\n", FILE_NAME_WEB, value);
+    }
   }
 
   // Display mode control
@@ -189,8 +246,10 @@ void WebServer::handlePostRoot(WiFiClient& client, const char* body) {
     }
   }
   
-  // Redirect back to main page
-  handleGetRoot(client);
+  // Send simple JSON response - don't try to serve entire HTML file
+  DBG_VERBOSE("%s handlePostRoot - Sending response\n", FILE_NAME_WEB);
+  sendHttpHeader(client, "application/json");
+  client.println("{\"status\":\"ok\"}");
 }
 
 void WebServer::handleApiStatus(WiFiClient& client) {
@@ -207,22 +266,17 @@ void WebServer::handleApiStatus(WiFiClient& client) {
   char timeStr[16];
   _apiController->getCurrentTime(timeStr, sizeof(timeStr));
   
-  // Get LED state
-  bool ledState = _apiController->getLedState();
-  
   // Build JSON response
   snprintf(json, sizeof(json),
     "{"
     "\"mode\":\"%s\","
     "\"timer_running\":%s,"
     "\"time\":\"%s\","
-    "\"led\":\"%s\","
     "\"time_set\":%s"
     "}",
     modeName,
     timerRunning ? "true" : "false",
     timeStr,
-    ledState ? "on" : "off",
     _apiController->isTimeSet() ? "true" : "false"
   );
   
@@ -236,7 +290,6 @@ void WebServer::handleApiDashboard(WiFiClient& client) {
   ClockMode mode = _apiController->getCurrentMode();
   const char* modeName = _apiController->getModeName(mode);
   bool timerRunning = _apiController->isTimerRunning();
-  bool ledState = _apiController->getLedState();
 
   char timeStr[16];
   _apiController->getCurrentTime(timeStr, sizeof(timeStr));
@@ -251,7 +304,6 @@ void WebServer::handleApiDashboard(WiFiClient& client) {
       "\"mode\":\"%s\","
       "\"mode_name\":\"%s\","
       "\"timer_running\":%s,"
-      "\"led_on\":%s,"
       "\"current_time\":\"%s\","
       "\"time_set\":%s,"
       "\"clock_color\":{\"red\":%d,\"green\":%d,\"blue\":%d},"
@@ -261,7 +313,6 @@ void WebServer::handleApiDashboard(WiFiClient& client) {
     modeName,
     modeName,
     timerRunning ? "true" : "false",
-    ledState ? "true" : "false",
     timeStr,
     timeSet ? "true" : "false",
     red, green, blue,
@@ -315,16 +366,30 @@ void WebServer::sendJsonResponse(WiFiClient& client, const char* json) {
 
 bool WebServer::parseHttpRequest(WiFiClient& client, char* method, char* path, 
                                  char* body, size_t bodySize) {
-  if (!client.available()) return false;
+  if (!client.available()) {
+    DBG_VERBOSE("%s parseHttpRequest - No data available from client\n", FILE_NAME_WEB);
+    return false;
+  }
+  
+  // Initialize body buffer
+  body[0] = '\0';
   
   // Read first line: "GET /path HTTP/1.1"
   String firstLine = client.readStringUntil('\n');
+  
+  if (firstLine.length() == 0) {
+    DBG_VERBOSE("%s parseHttpRequest - Empty first line\n", FILE_NAME_WEB);
+    return false;
+  }
   
   // Parse method and path
   int firstSpace = firstLine.indexOf(' ');
   int secondSpace = firstLine.indexOf(' ', firstSpace + 1);
   
-  if (firstSpace == -1 || secondSpace == -1) return false;
+  if (firstSpace == -1 || secondSpace == -1) {
+    DBG_VERBOSE("%s parseHttpRequest - Malformed request: %s\n", FILE_NAME_WEB, firstLine.c_str());
+    return false;
+  }
   
   firstLine.substring(0, firstSpace).toCharArray(method, 16);
   firstLine.substring(firstSpace + 1, secondSpace).toCharArray(path, 128);
@@ -335,15 +400,33 @@ bool WebServer::parseHttpRequest(WiFiClient& client, char* method, char* path,
     String line = client.readStringUntil('\n');
     if (line.startsWith("Content-Length:")) {
       contentLength = line.substring(15).toInt();
+      DBG_VERBOSE("%s parseHttpRequest - Found Content-Length: %d\n", FILE_NAME_WEB, contentLength);
     }
     if (line == "\r" || line == "") break;
   }
   
-  // Read body if present
-  if (contentLength > 0 && client.available()) {
+  // Read body if present - Read available data without complex looping
+  if (contentLength > 0) {
     int bytesToRead = min(contentLength, (int)bodySize - 1);
-    client.readBytes(body, bytesToRead);
-    body[bytesToRead] = '\0';
+    DBG_VERBOSE("%s parseHttpRequest - Expecting %d bytes, buffer size %d\n", FILE_NAME_WEB, contentLength, bodySize);
+    
+    // Wait briefly for data to be available
+    unsigned long startWait = millis();
+    while (!client.available() && (millis() - startWait) < 1000) {
+      delay(1);
+    }
+    
+    if (client.available()) {
+      // Read what's available (may be less than contentLength)
+      int bytesRead = client.readBytes(body, bytesToRead);
+      body[bytesRead] = '\0';
+      DBG_VERBOSE("%s parseHttpRequest - Read %d bytes: '%s'\n", FILE_NAME_WEB, bytesRead, body);
+    } else {
+      DBG_VERBOSE("%s parseHttpRequest - Timeout waiting for body data\n", FILE_NAME_WEB);
+      body[0] = '\0';
+    }
+  } else {
+    DBG_VERBOSE("%s parseHttpRequest - No Content-Length or length=0\n", FILE_NAME_WEB);
   }
   
   return true;
@@ -406,28 +489,56 @@ void WebServer::urlDecode(char* str) {
 }
 
 void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* contentType) {
-  if (!_sdcard || !_sdcard->fileExists(filepath)) {
-    DEBUGV("%s serveFile - File not found: %s\n", FILE_NAME_WEB, filepath);
+  if (!_sdcard) {
+    DBG_VERBOSE("%s serveFile - SD Card not initialized for: %s\n", FILE_NAME_WEB, filepath);
+    handle404(client);
+    return;
+  }
+
+  if (!_sdcard->beginIo(pdMS_TO_TICKS(MUTEX_TIMEOUT_MS))) {
+    DBG_VERBOSE("%s serveFile - SD Card busy for: %s\n", FILE_NAME_WEB, filepath);
+    sendHttpHeader(client, "text/html", 503, "Service Unavailable");
+    client.println("<html><body><h1>503 Service Unavailable</h1><p>SD Card busy. Please retry.</p></body></html>");
+    return;
+  }
+
+  const char* resolvedPath = filepath;
+  char altPath[128] = {0};
+  if (!_sdcard->fileExists(resolvedPath)) {
+    if (filepath[0] != '/' && strlen(filepath) < sizeof(altPath) - 1) {
+      altPath[0] = '/';
+      strncpy(altPath + 1, filepath, sizeof(altPath) - 2);
+      altPath[sizeof(altPath) - 1] = '\0';
+      if (_sdcard->fileExists(altPath)) {
+        resolvedPath = altPath;
+      }
+    }
+  }
+
+  if (!_sdcard->fileExists(resolvedPath)) {
+    DBG_VERBOSE("%s serveFile - File not found: %s\n", FILE_NAME_WEB, filepath);
+    _sdcard->endIo();
     handle404(client);
     return;
   }
   
-  File file = _sdcard->readFile(filepath);
+  File file = _sdcard->readFile(resolvedPath);
   if (!file) {
-    DEBUGV("%s serveFile - Failed to open file: %s\n", FILE_NAME_WEB, filepath);
+    DBG_VERBOSE("%s serveFile - Failed to open file: %s\n", FILE_NAME_WEB, resolvedPath);
+    _sdcard->endIo();
     handle404(client);
     return;
   }
   
   size_t fileSize = file.size();
-  DEBUGV("%s serveFile - Serving %s (%lu bytes)\n", FILE_NAME_WEB, filepath, (unsigned long)fileSize);
+  DBG_VERBOSE("%s serveFile - Serving %s (%lu bytes) as %s\n", FILE_NAME_WEB, resolvedPath, (unsigned long)fileSize, contentType);
   
-  // Send HTTP header with size for diagnostics
+  // Send HTTP header with correct formatting
   client.printf("HTTP/1.1 200 OK\r\n");
   client.printf("Content-Type: %s\r\n", contentType);
   client.printf("Content-Length: %lu\r\n", (unsigned long)fileSize);
-  client.printf("X-File-Size: %lu\r\n", (unsigned long)fileSize);
-  client.println("Connection: close\r\n");
+  client.printf("Connection: close\r\n");
+  client.printf("\r\n");  // Blank line between headers and body
   
   // Stream file content
   char buffer[256];
@@ -437,9 +548,11 @@ void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* 
       client.write((uint8_t*)buffer, len);
     }
   }
+
+  _sdcard->endIo();
   
   file.close();
-  DEBUGV("%s serveFile - Served: %s\n", FILE_NAME_WEB, filepath);
+  DBG_VERBOSE("%s serveFile - Served: %s\n", FILE_NAME_WEB, filepath);
 }
 
 // === HTML Generation (DEPRECATED - HTML now served from SD card) ===

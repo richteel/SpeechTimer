@@ -334,20 +334,22 @@ void checkSdCard(void *param) {
       if (xSemaphoreTake(display_state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
         bool wifiConnected = false;
         bool timeSet = false;
+        bool timeSetKnown = false;
         if (xSemaphoreTake(wifi_state_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
           wifiConnected = clockWifi.isWiFiConnected();
           xSemaphoreGive(wifi_state_mutex);
         }
         if (xSemaphoreTake(rtc_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
           timeSet = clockRtc.timeIsSet();
+          timeSetKnown = true;
           xSemaphoreGive(rtc_mutex);
         }
 
         if (sdError) {
           clockOutput.setSdCardError(true);
-        } else if (wifiConnected && !timeSet) {
+        } else if (wifiConnected && timeSetKnown && !timeSet) {
           clockOutput.setWiFiConnectedWaitingForTime();
-        } else {
+        } else if (timeSetKnown) {
           clockOutput.setSdCardError(false);
         }
         xSemaphoreGive(display_state_mutex);
@@ -420,6 +422,13 @@ void checkSdCard(void *param) {
       debugMessage("checkSdCard");
       loopCount = 0;
     }
+    
+    // Periodically flush buffered logs to SD card (called from here to ensure mutex protection)
+    if (cardPresent && xSemaphoreTake(sdcard_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_SHORT_MS)) == pdTRUE) {
+      clockSdCard.flushLogBuffer();
+      xSemaphoreGive(sdcard_mutex);
+    }
+    
     vTaskDelay(pdMS_TO_TICKS(TASK_DELAY_SDCARD_CHECK));
   }
 }
@@ -500,15 +509,23 @@ void checkWiFi() {
 
     char currentTime[10] = "--:--";
     
-    // Protect RTC access with mutex
-    if (xSemaphoreTake(rtc_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
-      if (hasIp && !clockRtc.timeIsSet()) {
-        clockRtc.getInternetTime();
-        if (clockRtc.timeIsSet()) {
-          clockRtc.getTimeString(currentTime);
+    // Sync time without holding rtc_mutex to avoid blocking readers
+    if (hasIp) {
+      // Handles periodic updates internally (timezone + NTP)
+      clockRtc.getInternetTime();
+    }
 
+    // Protect RTC access with mutex for read-only operations
+    if (xSemaphoreTake(rtc_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
+      if (clockRtc.timeIsSet()) {
+        clockRtc.getTimeString(currentTime);
+
+        // Only log on first successful time set
+        static bool firstTimeLogged = false;
+        if (!firstTimeLogged) {
           sprintf(msgBuffer, "checkWiFi - Current time is: %s", currentTime);
           debugMessage(msgBuffer, logDebug);
+          firstTimeLogged = true;
         }
       }
       xSemaphoreGive(rtc_mutex);
@@ -559,15 +576,8 @@ void handleWebServer(void *param) {
       debugMessage("handleWebServer - Web server started");
     }
 
-    // Stop web server only after WiFi has been down for a while (debounce)
-    if (!wifiConnected && serverStarted) {
-      unsigned long now = millis();
-      if (lastWifiOkMillis != 0 && (now - lastWifiOkMillis) > 5000) {
-        webServer.stop();
-        serverStarted = false;
-        debugMessage("handleWebServer - Web server stopped (WiFi disconnected)");
-      }
-    }
+    // Note: Web server continues running even if WiFi disconnects
+    // The server will automatically reconnect when WiFi is restored
 
     // Handle client requests
     if (serverStarted) {
@@ -686,11 +696,16 @@ void clockUpdate(void *param) {
         clockOutput.updateTimer();
         break;
       case ClockMode::TestColors:
+        clockOutput.updateTestMode();
         break;
       case ClockMode::TestRainbow:
         break;
       case ClockMode::Clock:
       default:
+        // Reset test mode timer when exiting test mode
+        if (last_clockMode == ClockMode::TestColors || last_clockMode == ClockMode::TestRainbow) {
+          clockOutput.resetTestMode();
+        }
         clockOutput.updateTime(currentTime);
         break;
     }
@@ -767,6 +782,9 @@ void setup() {
   // Create Queue
   remote_queue = xQueueCreate(remote_queue_len, sizeof(char));
   log_queue = xQueueCreate(log_queue_len, sizeof(Log_Entry));
+
+  // Share log queue with SD card helper
+  clockSdCard.setLogQueue(log_queue);
 
   // Create Mutex before starting tasks
   sdcard_mutex = xSemaphoreCreateMutex();

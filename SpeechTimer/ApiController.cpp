@@ -25,7 +25,7 @@ void ApiController::begin(Clk_Output* output, Clk_Wifi* wifi, Clk_Rtc* rtc, Clk_
   _sdcard = sdcard;
   _initialized = (_output != nullptr && _wifi != nullptr && _rtc != nullptr && _sdcard != nullptr);
   
-  DEBUGV("%s begin - Initialized: %s\n", FILE_NAME_API, _initialized ? "true" : "false");
+  DBG_VERBOSE("%s begin - Initialized: %s\n", FILE_NAME_API, _initialized ? "true" : "false");
 }
 
 void ApiController::setMutexes(SemaphoreHandle_t rtc_mx, SemaphoreHandle_t wifi_mx, 
@@ -66,7 +66,7 @@ bool ApiController::setLedState(bool on) {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, on ? HIGH : LOW);
   
-  DEBUGV("%s setLedState - LED: %s\n", FILE_NAME_API, on ? "ON" : "OFF");
+  DBG_VERBOSE("%s setLedState - LED: %s\n", FILE_NAME_API, on ? "ON" : "OFF");
   return true;
 }
 
@@ -79,19 +79,16 @@ bool ApiController::getLedState() {
 bool ApiController::setClockColor(uint8_t red, uint8_t green, uint8_t blue) {
   if (!_initialized || !takeMutex(_display_state_mutex)) return false;
   
-  // Store color in Clk_Output or wherever needed
-  // For now, just log it - you'll need to add color storage to Clk_Output
-  DEBUGV("%s setClockColor - RGB: %d, %d, %d\n", FILE_NAME_API, red, green, blue);
+  _output->setClockColor(red, green, blue);
+  
+  DBG_VERBOSE("%s setClockColor - RGB: %d, %d, %d\n", FILE_NAME_API, red, green, blue);
   
   giveMutex(_display_state_mutex);
   return true;
 }
 
 void ApiController::getClockColor(uint8_t& red, uint8_t& green, uint8_t& blue) {
-  // Default white for now - you'll need to store this in Clk_Output
-  red = 255;
-  green = 255;
-  blue = 255;
+  _output->getClockColor(red, green, blue);
 }
 
 // === Timer Control ===
@@ -115,7 +112,7 @@ bool ApiController::startTimer(int minMinutes, int maxMinutes) {
   // Switch to timer mode
   _output->clockMode = ClockMode::TimerRun;
   
-  DEBUGV("%s startTimer - Min: %d, Max: %d\n", FILE_NAME_API, minMinutes, maxMinutes);
+  DBG_VERBOSE("%s startTimer - Min: %d, Max: %d\n", FILE_NAME_API, minMinutes, maxMinutes);
   
   giveMutex(_display_state_mutex);
   return true;
@@ -127,7 +124,7 @@ bool ApiController::stopTimer() {
   // Switch to timer stop mode, then back to clock
   _output->clockMode = ClockMode::TimerStop;
   
-  DEBUGV("%s stopTimer\n", FILE_NAME_API);
+  DBG_VERBOSE("%s stopTimer\n", FILE_NAME_API);
   
   giveMutex(_display_state_mutex);
   return true;
@@ -177,7 +174,7 @@ bool ApiController::setClockMode(ClockMode mode) {
   
   _output->clockMode = mode;
   
-  DEBUGV("%s setClockMode - Mode: %s\n", FILE_NAME_API, getModeName(mode));
+  DBG_VERBOSE("%s setClockMode - Mode: %s\n", FILE_NAME_API, getModeName(mode));
   
   giveMutex(_display_state_mutex);
   return true;
@@ -293,7 +290,7 @@ void ApiController::updateTestMode() {
     // You would set different colors here based on testStep
     // This requires adding color control methods to Clk_Output
     
-    DEBUGV("%s updateTestMode - Step: %d\n", FILE_NAME_API, _testStep);
+    DBG_VERBOSE("%s updateTestMode - Step: %d\n", FILE_NAME_API, _testStep);
     
     _testStep++;
     

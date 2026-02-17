@@ -19,6 +19,9 @@
   #define Dbg_println(...) DEBUG_SERIAL.println(__VA_ARGS__)
   #define Dbg_printf(...) DEBUG_SERIAL.printf(__VA_ARGS__)
   #define Dbg_write(...) DEBUG_SERIAL.write(__VA_ARGS__)
+  
+  // Verbose debug macro for detailed logging (custom name to avoid Arduino core conflict)
+  #define DBG_VERBOSE(...) DEBUG_SERIAL.printf(__VA_ARGS__)
 #else
   // No-op macros when debugging is disabled
   #define Dbg_begin(...)
@@ -27,6 +30,7 @@
   #define Dbg_println(...)
   #define Dbg_printf(...)
   #define Dbg_write(...)
+  #define DBG_VERBOSE(...)
 #endif
 
 #endif  // DBGPRINT

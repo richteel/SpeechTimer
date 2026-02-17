@@ -39,11 +39,11 @@
   <form method="POST" action="/">
     <div class="form-group">
       <label>Min Time:</label>
-      <input type="number" name="MIN_TIME" value="5" min="1" max="60"> minutes
+      <input type="number" id="min-time-input" name="MIN_TIME" value="5" min="1" max="60"> minutes
     </div>
     <div class="form-group">
       <label>Max Time:</label>
-      <input type="number" name="MAX_TIME" value="7" min="1" max="60"> minutes
+      <input type="number" id="max-time-input" name="MAX_TIME" value="7" min="1" max="60"> minutes
     </div>
     <button class="success" type="button" data-submit="true" name="TIMER" value="START" id="timer-btn">&#x25B6; Start Timer</button>
   </form>
@@ -73,9 +73,6 @@
 <div class="section">
   <h2>&#9881;&#65039; System Controls</h2>
   <form method="POST" action="/" style="display:inline;">
-    <button class="success" type="button" data-submit="true" name="LED" value="ON" id="led-btn">&#x1F4A1; LED On</button>
-  </form>
-  <form method="POST" action="/" style="display:inline;">
     <button type="button" data-submit="true" name="TEST" value="START">&#128300; Start Test Mode</button>
   </form>
   <form method="POST" action="/" style="display:inline;">
@@ -90,7 +87,6 @@
     <div class="info-item"><span class="info-label">WiFi Status:</span><span class="info-value" id="wifi-status">Loading...</span></div>
     <div class="info-item"><span class="info-label">IP Address:</span><span class="info-value" id="ip-addr">Loading...</span></div>
     <div class="info-item"><span class="info-label">Requests:</span><span class="info-value" id="request-count">0</span></div>
-    <div class="info-item"><span class="info-label">LED Status:</span><span class="info-value" id="led-status">Loading...</span></div>
   </div>
 </div>
 

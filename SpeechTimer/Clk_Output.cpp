@@ -149,7 +149,6 @@ void Clk_Output::setWiFiConnectedWaitingForTime() {
   // Set all neopixels to green to indicate WiFi connected but waiting for time sync
   if (!_timeHasBeenSynced) {
     _clockColor = _strip.Color(0, 255, 0);  // Green
-    neopixelColorWipe(_clockColor, 50);
   }
 }
 
@@ -159,7 +158,6 @@ void Clk_Output::setSdCardError(bool hasError) {
   } else {
     _clockColor = _strip.Color(255, 255, 255);  // White
   }
-  neopixelColorWipe(_clockColor, 50);
 }
 
 void Clk_Output::oledClear() {
@@ -232,11 +230,6 @@ void Clk_Output::timerNext(bool advanceOne) {
 
 int Clk_Output::timerSetMin(int minVal) {
   int _timerMin = _sdcard->sdCardConfig.timers[_currentTimerIndex].min;
-  bool _timerManual = _sdcard->sdCardConfig.timers[_currentTimerIndex].manual;
-
-  if (!_timerManual) {
-    return _timerMin;
-  }
 
   if (minVal >= 0) {
     _sdcard->sdCardConfig.timers[_currentTimerIndex].min = minVal % 100;
@@ -247,17 +240,22 @@ int Clk_Output::timerSetMin(int minVal) {
 
 int Clk_Output::timerSetMax(int maxVal) {
   int _timerMax = _sdcard->sdCardConfig.timers[_currentTimerIndex].max;
-  bool _timerManual = _sdcard->sdCardConfig.timers[_currentTimerIndex].manual;
-
-  if (!_timerManual) {
-    return _timerMax;
-  }
 
   if (maxVal >= 0) {
     _sdcard->sdCardConfig.timers[_currentTimerIndex].max = maxVal % 100;
   }
 
   return _sdcard->sdCardConfig.timers[_currentTimerIndex].max;
+}
+
+void Clk_Output::setClockColor(uint8_t red, uint8_t green, uint8_t blue) {
+  _clockColor = ((uint32_t)red << 16) | ((uint32_t)green << 8) | blue;
+}
+
+void Clk_Output::getClockColor(uint8_t& red, uint8_t& green, uint8_t& blue) {
+  red = (_clockColor >> 16) & 0xFF;
+  green = (_clockColor >> 8) & 0xFF;
+  blue = _clockColor & 0xFF;
 }
 
 void Clk_Output::updateIpAddress(const char *ipAddress) {
@@ -408,6 +406,67 @@ int Clk_Output::getTimerSeconds() {
   }
 
   return (millis() - _timerStartMillis) / 1000;
+}
+
+void Clk_Output::updateTestMode() {
+  unsigned long currentMillis = millis();
+  
+  // Initialize test mode timer if not already done
+  if (_testModeStartMillis == 0) {
+    _testModeStartMillis = currentMillis;
+    _testStep = 0;
+  }
+  
+  // Calculate elapsed time since test mode started
+  unsigned long elapsedMillis = currentMillis - _testModeStartMillis;
+  
+  // Change test pattern every 3 seconds (3000ms)
+  _testStep = (elapsedMillis / 3000) % 6;
+  
+  // Run different test patterns
+  switch (_testStep) {
+    case 0:
+      // Red
+      _clockColor = Color(255, 0, 0);
+      neopixelColorWipe(_clockColor, 50);
+      break;
+    case 1:
+      // Green
+      _clockColor = Color(0, 255, 0);
+      neopixelColorWipe(_clockColor, 50);
+      break;
+    case 2:
+      // Blue
+      _clockColor = Color(0, 0, 255);
+      neopixelColorWipe(_clockColor, 50);
+      break;
+    case 3:
+      // Yellow (Red + Green)
+      _clockColor = Color(255, 255, 0);
+      neopixelColorWipe(_clockColor, 50);
+      break;
+    case 4:
+      // Cyan (Green + Blue)
+      _clockColor = Color(0, 255, 255);
+      neopixelColorWipe(_clockColor, 50);
+      break;
+    case 5:
+      // Magenta (Red + Blue)
+      _clockColor = Color(255, 0, 255);
+      neopixelColorWipe(_clockColor, 50);
+      break;
+  }
+  
+  // Display current color on OLED
+  char colorDispStr[32];
+  uint8_t r, g, b;
+  getClockColor(r, g, b);
+  snprintf(colorDispStr, sizeof(colorDispStr), "TEST: RGB(%d,%d,%d)", r, g, b);
+  
+  _oledDisplay.clearDisplay();
+  oledDrawTextCentered(20, "TEST MODE", 2);
+  oledDrawTextCentered(45, colorDispStr, 1);
+  _oledDisplay.display();
 }
 
 int Clk_Output::rollingAverageBrightness() {

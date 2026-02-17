@@ -51,11 +51,19 @@ public:
 
   int timerSetMin(int maxVal = -1);
 
+  void setClockColor(uint8_t red, uint8_t green, uint8_t blue);
+
+  void getClockColor(uint8_t& red, uint8_t& green, uint8_t& blue);
+
   void updateIpAddress(const char *ipAddress);
 
   void updateTime(const char *time);
 
   void updateTimer();
+
+  void updateTestMode();
+
+  void resetTestMode() { _testModeStartMillis = 0; _testStep = 0; }
 
   void setWiFiConnectedWaitingForTime();
 
@@ -122,6 +130,10 @@ private:
   int _lightValueOldestIdx = 0;
   long _lightValueSum = 0;  // Cached sum for O(1) average calculation
   unsigned long _lightReadPreviousMillis = 0;
+  
+  // Test mode state
+  unsigned long _testModeStartMillis = 0;
+  int _testStep = 0;  // Cycles through different test colors/animations
   const long _lightReadInterval = 500;
 };
 

@@ -3,6 +3,7 @@
 
 #include <WiFi.h>
 #include "ApiController.h"
+#include "DbgPrint.h"
 
 // Forward declarations
 class Clk_SdCard;
