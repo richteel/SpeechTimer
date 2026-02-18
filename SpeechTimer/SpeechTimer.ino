@@ -157,6 +157,7 @@ WiFiMode_t last_WiFiMode = WIFI_OFF;
 // Config global settings
 unsigned long configLoadMillis = 0;
 unsigned long last_configLoadMillis = 0;
+bool allowWiFiConfigReload = true;
 
 // Module Objects
 Clk_SdCard clockSdCard = Clk_SdCard();
@@ -312,6 +313,7 @@ void checkSdCard(void *param) {
 
   int loopCount = 0;
   Log_Entry item;
+  unsigned long configMissingSince = 0;
 
   while (1) {
     bool cardPresent = false;
@@ -358,11 +360,22 @@ void checkSdCard(void *param) {
     }
     
     // Protect config state variables with mutex
+    // Debounce transient SD/config misses so WiFi does not flap.
     if (xSemaphoreTake(config_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {
       if (!cardPresent || !configPresent) {
-        last_configLoadMillis = 0;
-        configLoadMillis = 0;
-      } else if (configLoadMillis == 0) {
+        if (configMissingSince == 0) {
+          configMissingSince = millis();
+        }
+
+        // Only clear config marker after sustained missing state.
+        if ((millis() - configMissingSince) > 10000) {
+          configLoadMillis = 0;
+        }
+      } else {
+        configMissingSince = 0;
+      }
+
+      if (configLoadMillis == 0 && cardPresent && configPresent) {
         configLoadMillis = millis();
       }
       currentConfigLoadMillis = configLoadMillis;
@@ -455,8 +468,9 @@ void checkWiFi() {
       xSemaphoreGive(config_mutex);
     }
     
-    // If the SD Card was inserted/reinserted, use the new configuration to connect to the Wi-Fi AP
-    if (currentConfigLoadMillis != currentLastConfigLoadMillis) {
+    // If SD config marker changed to a valid value, use the new configuration to connect to Wi-Fi.
+    // This is allowed only until the first successful Wi-Fi connection.
+    if (allowWiFiConfigReload && currentConfigLoadMillis != 0 && currentConfigLoadMillis != currentLastConfigLoadMillis) {
       debugMessage("checkWiFi - START: Restart Wi-Fi with new Config", logDebug);
 
       unsigned long startConnect = millis();
@@ -468,6 +482,11 @@ void checkWiFi() {
       }
       debugMessage(msgBuffer, logDebug);
       debugMessage("checkWiFi - Wi-Fi Begin Completed", logDebug);
+
+      if (clockWifi.hasIpAddress()) {
+        allowWiFiConfigReload = false;
+        debugMessage("checkWiFi - Config-triggered Wi-Fi reload disabled after first successful connect", logDebug);
+      }
       
       // Update last_configLoadMillis with mutex protection
       if (xSemaphoreTake(config_mutex, pdMS_TO_TICKS(MUTEX_TIMEOUT_MS)) == pdTRUE) {

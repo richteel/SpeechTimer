@@ -2,6 +2,8 @@
 #define API_CONTROLLER_H
 
 #include <Arduino.h>
+#include <FreeRTOS.h>
+#include <semphr.h>
 #include "Clk_Output.h"
 #include "Clk_Wifi.h"
 #include "Clk_Rtc.h"

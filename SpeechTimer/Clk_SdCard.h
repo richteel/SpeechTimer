@@ -4,6 +4,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <ArduinoJson.h>
+#include <FreeRTOS.h>
 #include <queue.h>
 #include <semphr.h>
 #include "config.h"

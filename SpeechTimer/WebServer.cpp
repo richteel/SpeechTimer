@@ -8,6 +8,13 @@
 #define REQUEST_BUFFER_SIZE 2048
 #define RESPONSE_BUFFER_SIZE 2048
 
+// Latency-tolerant HTTP timing (milliseconds)
+static constexpr unsigned long HTTP_FIRST_LINE_TIMEOUT_MS = 5000;
+static constexpr unsigned long HTTP_HEADER_LINE_TIMEOUT_MS = 2500;
+static constexpr unsigned long HTTP_BODY_TIMEOUT_MS = 5000;
+static constexpr unsigned long HTTP_WRITE_STALL_TIMEOUT_MS = 3000;
+static constexpr unsigned long HTTP_CLOSE_GRACE_MS = 1000;
+
 WebServer::WebServer(uint16_t port) 
   : _server(port),
     _apiController(nullptr),
@@ -44,30 +51,33 @@ bool WebServer::isRunning() {
 
 void WebServer::handleClient() {
   if (!_initialized) return;
-  
-  WiFiClient client = _server.accept();
-  if (!client) return;
-  
-  DBG_VERBOSE("%s handleClient - New client connected\n", FILE_NAME_WEB);
-  _requestCount++;
-  DBG_VERBOSE("%s handleClient - Request count: %d\n", FILE_NAME_WEB, _requestCount);
-  
-  // Wait for data with extended timeout to handle WiFi restart periods
-  // Increased from 5s to 10s to allow more resilience during WiFi reconnection
-  unsigned long timeout = millis() + 10000;
-  while (!client.available() && millis() < timeout) {
-    delay(1);
-  }
-  
-  if (client.available()) {
+
+  // Drain multiple pending clients per scheduler tick.
+  // Use available() so we only process clients that already have request bytes.
+  const int maxClientsPerCall = 4;
+  for (int clientIndex = 0; clientIndex < maxClientsPerCall; clientIndex++) {
+    WiFiClient client = _server.available();
+    if (!client) {
+      break;
+    }
+
+    DBG_VERBOSE("%s handleClient - New client connected\n", FILE_NAME_WEB);
+
+    _requestCount++;
+    DBG_VERBOSE("%s handleClient - Request count: %d\n", FILE_NAME_WEB, _requestCount);
     DBG_VERBOSE("%s handleClient - Client has data, processing request\n", FILE_NAME_WEB);
     handleRequest(client);
-  } else {
-    DBG_VERBOSE("%s handleClient - Timeout waiting for data\n", FILE_NAME_WEB);
+    client.flush();
+
+    // Give TCP stack time to finish transmitting on slower links.
+    unsigned long closeDeadline = millis() + HTTP_CLOSE_GRACE_MS;
+    while (client.connected() && millis() < closeDeadline) {
+      delay(2);
+    }
+
+    client.stop();
+    DBG_VERBOSE("%s handleClient - Client disconnected\n", FILE_NAME_WEB);
   }
-  
-  client.stop();
-  DBG_VERBOSE("%s handleClient - Client disconnected\n", FILE_NAME_WEB);
 }
 
 void WebServer::handleRequest(WiFiClient& client) {
@@ -77,16 +87,26 @@ void WebServer::handleRequest(WiFiClient& client) {
   
   if (!parseHttpRequest(client, method, path, body, sizeof(body))) {
     DBG_VERBOSE("%s handleRequest - Failed to parse request\n", FILE_NAME_WEB);
-    handle404(client);
     return;
   }
   
   DBG_VERBOSE("%s handleRequest - %s %s\n", FILE_NAME_WEB, method, path);
+
+  // Strip query string for route matching (e.g., /js/dashboard.js?v=123)
+  char* queryStart = strchr(path, '?');
+  if (queryStart != nullptr) {
+    *queryStart = '\0';
+  }
   
   // Route the request
   if (strcmp(method, "GET") == 0) {
     if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
       handleGetRoot(client);
+    } else if (strcmp(path, "/favicon.ico") == 0) {
+      client.print("HTTP/1.1 204 No Content\r\n");
+      client.print("Content-Length: 0\r\n");
+      client.print("Connection: close\r\n");
+      client.print("\r\n");
     } else if (strcmp(path, "/api/dashboard") == 0) {
       handleApiDashboard(client);
     } else if (strcmp(path, "/api/status") == 0) {
@@ -98,7 +118,7 @@ void WebServer::handleRequest(WiFiClient& client) {
     } else if (strcmp(path, "/css/dashboard.css") == 0) {
       serveFile(client, "wwwroot/css/dashboard.css", "text/css");
     } else if (strcmp(path, "/js/dashboard.js") == 0) {
-      serveFile(client, "wwwroot/js/dashboard.js", "application/javascript");
+      serveFile(client, "wwwroot/js/dashboard.js", "text/javascript");
     } else {
       DBG_VERBOSE("%s handleRequest - Unknown GET path: %s\n", FILE_NAME_WEB, path);
       handle404(client);
@@ -354,11 +374,17 @@ void WebServer::sendHttpHeader(WiFiClient& client, const char* contentType,
                                int statusCode, const char* statusText) {
   client.printf("HTTP/1.1 %d %s\r\n", statusCode, statusText);
   client.printf("Content-Type: %s\r\n", contentType);
+  client.println("Cache-Control: no-store, no-cache, must-revalidate\r");
   client.println("Connection: close\r\n");
 }
 
 void WebServer::sendJsonResponse(WiFiClient& client, const char* json) {
-  sendHttpHeader(client, "application/json");
+  const size_t jsonLen = strlen(json);
+  client.printf("HTTP/1.1 200 OK\r\n");
+  client.println("Content-Type: application/json\r");
+  client.printf("Content-Length: %lu\r\n", (unsigned long)jsonLen);
+  client.println("Cache-Control: no-store, no-cache, must-revalidate\r");
+  client.println("Connection: close\r\n");
   client.println(json);
 }
 
@@ -366,19 +392,42 @@ void WebServer::sendJsonResponse(WiFiClient& client, const char* json) {
 
 bool WebServer::parseHttpRequest(WiFiClient& client, char* method, char* path, 
                                  char* body, size_t bodySize) {
-  if (!client.available()) {
-    DBG_VERBOSE("%s parseHttpRequest - No data available from client\n", FILE_NAME_WEB);
-    return false;
-  }
-  
   // Initialize body buffer
   body[0] = '\0';
   
   // Read first line: "GET /path HTTP/1.1"
-  String firstLine = client.readStringUntil('\n');
+  String firstLine = "";
+  bool firstLineDone = false;
+  unsigned long firstLineLastProgress = millis();
+  while ((millis() - firstLineLastProgress) < HTTP_FIRST_LINE_TIMEOUT_MS && !firstLineDone) {
+    while (client.available()) {
+      char c = (char)client.read();
+      firstLineLastProgress = millis();
+      if (c == '\r') {
+        continue;
+      }
+      if (c == '\n') {
+        firstLineDone = true;
+        break;
+      }
+      if (firstLine.length() < 255) {
+        firstLine += c;
+      }
+    }
+
+    if (firstLineDone) {
+      break;
+    }
+
+    if (!client.connected() && !client.available()) {
+      break;
+    }
+
+    delay(1);
+  }
   
   if (firstLine.length() == 0) {
-    DBG_VERBOSE("%s parseHttpRequest - Empty first line\n", FILE_NAME_WEB);
+    DBG_VERBOSE("%s parseHttpRequest - Empty first line (likely idle/preconnect)\n", FILE_NAME_WEB);
     return false;
   }
   
@@ -396,35 +445,80 @@ bool WebServer::parseHttpRequest(WiFiClient& client, char* method, char* path,
   
   // Read headers
   int contentLength = 0;
-  while (client.available()) {
-    String line = client.readStringUntil('\n');
+  while (true) {
+    String line = "";
+    bool lineDone = false;
+    unsigned long lineLastProgress = millis();
+
+    while ((millis() - lineLastProgress) < HTTP_HEADER_LINE_TIMEOUT_MS && !lineDone) {
+      while (client.available()) {
+        char c = (char)client.read();
+        lineLastProgress = millis();
+        if (c == '\r') {
+          continue;
+        }
+        if (c == '\n') {
+          lineDone = true;
+          break;
+        }
+        if (line.length() < 255) {
+          line += c;
+        }
+      }
+
+      if (lineDone) {
+        break;
+      }
+
+      if (!client.connected() && !client.available()) {
+        break;
+      }
+
+      delay(1);
+    }
+
+    // Timeout/closed before next header line: treat as end-of-headers
+    if (!lineDone && line.length() == 0) {
+      break;
+    }
+
     if (line.startsWith("Content-Length:")) {
       contentLength = line.substring(15).toInt();
       DBG_VERBOSE("%s parseHttpRequest - Found Content-Length: %d\n", FILE_NAME_WEB, contentLength);
     }
-    if (line == "\r" || line == "") break;
+
+    // Empty line marks end of headers
+    if (line.length() == 0) {
+      break;
+    }
   }
   
-  // Read body if present - Read available data without complex looping
+  // Read body if present
   if (contentLength > 0) {
     int bytesToRead = min(contentLength, (int)bodySize - 1);
     DBG_VERBOSE("%s parseHttpRequest - Expecting %d bytes, buffer size %d\n", FILE_NAME_WEB, contentLength, bodySize);
-    
-    // Wait briefly for data to be available
-    unsigned long startWait = millis();
-    while (!client.available() && (millis() - startWait) < 1000) {
+
+    int bytesRead = 0;
+    unsigned long bodyLastProgress = millis();
+    while (bytesRead < bytesToRead && (millis() - bodyLastProgress) < HTTP_BODY_TIMEOUT_MS) {
+      while (client.available() && bytesRead < bytesToRead) {
+        body[bytesRead++] = (char)client.read();
+        bodyLastProgress = millis();
+      }
+
+      if (bytesRead >= bytesToRead) {
+        break;
+      }
+
+      if (!client.connected() && !client.available()) {
+        break;
+      }
+
       delay(1);
     }
-    
-    if (client.available()) {
-      // Read what's available (may be less than contentLength)
-      int bytesRead = client.readBytes(body, bytesToRead);
-      body[bytesRead] = '\0';
-      DBG_VERBOSE("%s parseHttpRequest - Read %d bytes: '%s'\n", FILE_NAME_WEB, bytesRead, body);
-    } else {
-      DBG_VERBOSE("%s parseHttpRequest - Timeout waiting for body data\n", FILE_NAME_WEB);
-      body[0] = '\0';
-    }
+
+    body[bytesRead] = '\0';
+    DBG_VERBOSE("%s parseHttpRequest - Read %d bytes: '%s'\n", FILE_NAME_WEB, bytesRead, body);
   } else {
     DBG_VERBOSE("%s parseHttpRequest - No Content-Length or length=0\n", FILE_NAME_WEB);
   }
@@ -537,21 +631,55 @@ void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* 
   client.printf("HTTP/1.1 200 OK\r\n");
   client.printf("Content-Type: %s\r\n", contentType);
   client.printf("Content-Length: %lu\r\n", (unsigned long)fileSize);
+
+  if (strcmp(contentType, "text/css") == 0 || strcmp(contentType, "text/javascript") == 0) {
+    client.printf("Cache-Control: public, max-age=3600\r\n");
+  } else {
+    client.printf("Cache-Control: no-store, no-cache, must-revalidate\r\n");
+  }
+
   client.printf("Connection: close\r\n");
   client.printf("\r\n");  // Blank line between headers and body
   
   // Stream file content
-  char buffer[256];
+  char buffer[128];
+  size_t bytesSent = 0;
   while (file.available()) {
     int len = file.read((uint8_t*)buffer, sizeof(buffer));
     if (len > 0) {
-      client.write((uint8_t*)buffer, len);
+      int offset = 0;
+      unsigned long writeLastProgress = millis();
+      while (offset < len) {
+        size_t written = client.write((uint8_t*)buffer + offset, len - offset);
+        if (written == 0) {
+          if (!client.connected() || (millis() - writeLastProgress) >= HTTP_WRITE_STALL_TIMEOUT_MS) {
+            DBG_VERBOSE("%s serveFile - Client write stalled for: %s\n", FILE_NAME_WEB, filepath);
+            break;
+          }
+          delay(1);
+          continue;
+        }
+        offset += (int)written;
+        bytesSent += written;
+        writeLastProgress = millis();
+      }
+
+      if (offset < len) {
+        break;
+      }
+    } else {
+      break;
     }
+    delay(0);
   }
 
-  _sdcard->endIo();
-  
+  client.flush();
+  if (bytesSent != fileSize) {
+    DBG_VERBOSE("%s serveFile - WARNING: bytesSent(%lu) != fileSize(%lu) for %s\n", FILE_NAME_WEB, (unsigned long)bytesSent, (unsigned long)fileSize, filepath);
+  }
+
   file.close();
+  _sdcard->endIo();
   DBG_VERBOSE("%s serveFile - Served: %s\n", FILE_NAME_WEB, filepath);
 }
 

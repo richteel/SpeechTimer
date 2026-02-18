@@ -25,7 +25,6 @@ bool Clk_Wifi::begin(Config *configuration) {
   bool wifiConfigLoaded = config->networks[0].ssid[0] != '\0';
 
   WiFi.disconnect();
-  wifiMulti.clearAPList();
 
   if (wifiConfigLoaded) {
     // Add Access Points from Configuration
