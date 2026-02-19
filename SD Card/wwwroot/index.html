@@ -99,5 +99,18 @@
 </div>
 
 </div>
-<script src="/js/dashboard.js"></script>
+<script>
+(function loadDashboardJs(attempt) {
+  var maxAttempts = 3;
+  var script = document.createElement('script');
+  script.src = '/js/dashboard.js?v=' + Date.now() + '_' + attempt;
+  script.defer = true;
+  script.onerror = function() {
+    if (attempt < maxAttempts) {
+      setTimeout(function() { loadDashboardJs(attempt + 1); }, 500 * attempt);
+    }
+  };
+  document.body.appendChild(script);
+})(1);
+</script>
 </body></html>

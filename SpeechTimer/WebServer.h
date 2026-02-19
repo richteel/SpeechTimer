@@ -58,6 +58,7 @@ private:
   void handleApiSystem(WiFiClient& client);
   void handleApiTime(WiFiClient& client);
   void handle404(WiFiClient& client);
+  bool tryServeStaticGet(WiFiClient& client, const char* path);
   void serveFile(WiFiClient& client, const char* filepath, const char* contentType);
   
   // HTTP Response helpers
@@ -66,7 +67,7 @@ private:
   void sendJsonResponse(WiFiClient& client, const char* json);
   
   // Request parsing
-  bool parseHttpRequest(WiFiClient& client, char* method, char* path, char* body, size_t bodySize);
+  bool parseHttpRequest(WiFiClient& client, char* method, char* path, size_t pathSize, char* body, size_t bodySize);
   void parseFormData(const char* body, char params[][32], char values[][64], int& count, int maxParams);
   
   // HTML generation (DEPRECATED - HTML now served from SD card)
@@ -74,6 +75,7 @@ private:
   
   // Utility
   void urlDecode(char* str);
+  const char* getContentTypeForPath(const char* path);
   int getUrlParamValue(const char params[][32], const char values[][64], int count, 
                        const char* key, char* outValue, size_t outSize);
 };

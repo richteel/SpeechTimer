@@ -9,9 +9,50 @@ function safeUpdateInput(elementId, value) {
   }
 }
 
+function delayMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, options = {}, retryOptions = {}) {
+  const retries = retryOptions.retries ?? 2;
+  const timeoutMs = retryOptions.timeoutMs ?? 10000;
+  const retryDelayMs = retryOptions.retryDelayMs ?? 400;
+  const retryOnHttpError = retryOptions.retryOnHttpError ?? false;
+
+  let lastError = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutHandle);
+
+      if (retryOnHttpError && !response.ok && response.status >= 500 && attempt < retries) {
+        await delayMs(retryDelayMs * (attempt + 1));
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutHandle);
+      lastError = error;
+      if (attempt >= retries) {
+        throw error;
+      }
+      await delayMs(retryDelayMs * (attempt + 1));
+    }
+  }
+
+  throw lastError || new Error('fetchWithRetry failed');
+}
+
 function updateDashboard() {
   // Fetch all dashboard data in one request
-  fetch('/api/dashboard')
+  fetchWithRetry('/api/dashboard', {}, { retries: 2, timeoutMs: 12000, retryDelayMs: 500, retryOnHttpError: true })
     .then(r => r.json())
     .then(d => {
       console.log('Dashboard data received:', d);
@@ -102,13 +143,13 @@ function wireFormButtons() {
       console.log('Button click: ' + btnName + ' = ' + btnValue + ', Submitting form with data:', params.toString());
       
       // Submit using fetch to ensure proper encoding
-      fetch(btn.form.action, {
+      fetchWithRetry(btn.form.action, {
         method: btn.form.method,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: params.toString()
-      })
+      }, { retries: 1, timeoutMs: 12000, retryDelayMs: 600, retryOnHttpError: true })
       .then(response => {
         console.log(btnName + ' - Form submitted successfully, status:', response.status);
         // After successful submission, refresh the dashboard
@@ -119,7 +160,15 @@ function wireFormButtons() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', wireFormButtons);
+function initializeDashboardUi() {
+  wireFormButtons();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeDashboardUi);
+} else {
+  initializeDashboardUi();
+}
 
 // Log resource sizes to the browser console for diagnostics
 window.addEventListener('load', () => {

@@ -12,8 +12,8 @@
 static constexpr unsigned long HTTP_FIRST_LINE_TIMEOUT_MS = 5000;
 static constexpr unsigned long HTTP_HEADER_LINE_TIMEOUT_MS = 2500;
 static constexpr unsigned long HTTP_BODY_TIMEOUT_MS = 5000;
-static constexpr unsigned long HTTP_WRITE_STALL_TIMEOUT_MS = 3000;
-static constexpr unsigned long HTTP_CLOSE_GRACE_MS = 1000;
+static constexpr unsigned long HTTP_WRITE_STALL_TIMEOUT_MS = 15000;
+static constexpr unsigned long HTTP_CLOSE_GRACE_MS = 8000;
 
 WebServer::WebServer(uint16_t port) 
   : _server(port),
@@ -63,11 +63,13 @@ void WebServer::handleClient() {
 
     DBG_VERBOSE("%s handleClient - New client connected\n", FILE_NAME_WEB);
 
+    // Reduce packet coalescing delays on slower/higher-latency links.
+    client.setNoDelay(true);
+
     _requestCount++;
     DBG_VERBOSE("%s handleClient - Request count: %d\n", FILE_NAME_WEB, _requestCount);
     DBG_VERBOSE("%s handleClient - Client has data, processing request\n", FILE_NAME_WEB);
     handleRequest(client);
-    client.flush();
 
     // Give TCP stack time to finish transmitting on slower links.
     unsigned long closeDeadline = millis() + HTTP_CLOSE_GRACE_MS;
@@ -82,10 +84,10 @@ void WebServer::handleClient() {
 
 void WebServer::handleRequest(WiFiClient& client) {
   char method[16] = {0};
-  char path[128] = {0};
+  char path[256] = {0};
   char body[512] = {0};
   
-  if (!parseHttpRequest(client, method, path, body, sizeof(body))) {
+  if (!parseHttpRequest(client, method, path, sizeof(path), body, sizeof(body))) {
     DBG_VERBOSE("%s handleRequest - Failed to parse request\n", FILE_NAME_WEB);
     return;
   }
@@ -115,10 +117,8 @@ void WebServer::handleRequest(WiFiClient& client) {
       handleApiSystem(client);
     } else if (strcmp(path, "/api/time") == 0) {
       handleApiTime(client);
-    } else if (strcmp(path, "/css/dashboard.css") == 0) {
-      serveFile(client, "wwwroot/css/dashboard.css", "text/css");
-    } else if (strcmp(path, "/js/dashboard.js") == 0) {
-      serveFile(client, "wwwroot/js/dashboard.js", "text/javascript");
+    } else if (tryServeStaticGet(client, path)) {
+      // Served as static content from SD card.
     } else {
       DBG_VERBOSE("%s handleRequest - Unknown GET path: %s\n", FILE_NAME_WEB, path);
       handle404(client);
@@ -150,17 +150,7 @@ void WebServer::handleGetRoot(WiFiClient& client) {
     client.println("</body></html>");
     return;
   }
-  
-  // Try to serve index.html with multiple path variants
-  if (_sdcard->fileExists("wwwroot/index.html")) {
-    serveFile(client, "wwwroot/index.html", "text/html");
-  } else if (_sdcard->fileExists("/wwwroot/index.html")) {
-    serveFile(client, "/wwwroot/index.html", "text/html");
-  } else if (_sdcard->fileExists("index.html")) {
-    serveFile(client, "index.html", "text/html");
-  } else if (_sdcard->fileExists("/index.html")) {
-    serveFile(client, "/index.html", "text/html");
-  } else {
+  if (!tryServeStaticGet(client, "/")) {
     DBG_VERBOSE("%s handleGetRoot - index.html not found on SD card\n", FILE_NAME_WEB);
     sendHttpHeader(client, "text/html", 404, "Not Found");
     client.println("<html><body>");
@@ -390,8 +380,12 @@ void WebServer::sendJsonResponse(WiFiClient& client, const char* json) {
 
 // === Request Parsing ===
 
-bool WebServer::parseHttpRequest(WiFiClient& client, char* method, char* path, 
+bool WebServer::parseHttpRequest(WiFiClient& client, char* method, char* path, size_t pathSize,
                                  char* body, size_t bodySize) {
+  if (pathSize == 0) {
+    return false;
+  }
+
   // Initialize body buffer
   body[0] = '\0';
   
@@ -441,7 +435,7 @@ bool WebServer::parseHttpRequest(WiFiClient& client, char* method, char* path,
   }
   
   firstLine.substring(0, firstSpace).toCharArray(method, 16);
-  firstLine.substring(firstSpace + 1, secondSpace).toCharArray(path, 128);
+  firstLine.substring(firstSpace + 1, secondSpace).toCharArray(path, pathSize);
   
   // Read headers
   int contentLength = 0;
@@ -582,6 +576,96 @@ void WebServer::urlDecode(char* str) {
   *pstr = '\0';
 }
 
+const char* WebServer::getContentTypeForPath(const char* path) {
+  const char* ext = strrchr(path, '.');
+  if (!ext) {
+    return "application/octet-stream";
+  }
+
+  if (strcmp(ext, ".html") == 0 || strcmp(ext, ".htm") == 0) return "text/html";
+  if (strcmp(ext, ".css") == 0) return "text/css";
+  if (strcmp(ext, ".js") == 0 || strcmp(ext, ".mjs") == 0) return "text/javascript";
+  if (strcmp(ext, ".json") == 0) return "application/json";
+  if (strcmp(ext, ".svg") == 0) return "image/svg+xml";
+  if (strcmp(ext, ".png") == 0) return "image/png";
+  if (strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0) return "image/jpeg";
+  if (strcmp(ext, ".gif") == 0) return "image/gif";
+  if (strcmp(ext, ".webp") == 0) return "image/webp";
+  if (strcmp(ext, ".ico") == 0) return "image/x-icon";
+  if (strcmp(ext, ".wasm") == 0) return "application/wasm";
+  if (strcmp(ext, ".woff") == 0) return "font/woff";
+  if (strcmp(ext, ".woff2") == 0) return "font/woff2";
+  if (strcmp(ext, ".ttf") == 0) return "font/ttf";
+  if (strcmp(ext, ".otf") == 0) return "font/otf";
+  if (strcmp(ext, ".xml") == 0) return "application/xml";
+  if (strcmp(ext, ".txt") == 0) return "text/plain";
+  if (strcmp(ext, ".map") == 0) return "application/json";
+  return "application/octet-stream";
+}
+
+bool WebServer::tryServeStaticGet(WiFiClient& client, const char* path) {
+  if (path == nullptr || path[0] != '/') {
+    return false;
+  }
+
+  char decodedPath[256] = {0};
+  strncpy(decodedPath, path, sizeof(decodedPath) - 1);
+  decodedPath[sizeof(decodedPath) - 1] = '\0';
+  urlDecode(decodedPath);
+
+  // Prevent path traversal outside wwwroot and reject Windows separators.
+  if (strstr(decodedPath, "..") != nullptr || strchr(decodedPath, '\\') != nullptr) {
+    DBG_VERBOSE("%s tryServeStaticGet - Rejected traversal path: %s\n", FILE_NAME_WEB, decodedPath);
+    return false;
+  }
+
+  // API routes are handled explicitly elsewhere.
+  if (strncmp(decodedPath, "/api/", 5) == 0) {
+    return false;
+  }
+
+  if (!_sdcard) {
+    return false;
+  }
+
+  char staticPath[256] = {0};
+  if (strcmp(decodedPath, "/") == 0) {
+    strncpy(staticPath, "wwwroot/index.html", sizeof(staticPath) - 1);
+  } else {
+    snprintf(staticPath, sizeof(staticPath), "wwwroot%s", decodedPath);
+  }
+
+  // If URL ends with '/', serve index.html in that folder.
+  size_t pathLen = strlen(staticPath);
+  if (pathLen > 0 && staticPath[pathLen - 1] == '/') {
+    strncat(staticPath, "index.html", sizeof(staticPath) - strlen(staticPath) - 1);
+  }
+
+  // Mirror serveFile's relative/absolute fallback behavior.
+  const char* resolvedPath = staticPath;
+  char altPath[256] = {0};
+  if (!_sdcard->fileExists(resolvedPath)) {
+    if (staticPath[0] != '/' && strlen(staticPath) < sizeof(altPath) - 1) {
+      altPath[0] = '/';
+      strncpy(altPath + 1, staticPath, sizeof(altPath) - 2);
+      altPath[sizeof(altPath) - 1] = '\0';
+      if (_sdcard->fileExists(altPath)) {
+        resolvedPath = altPath;
+      }
+    }
+  }
+
+  if (!_sdcard->fileExists(resolvedPath)) {
+    DBG_VERBOSE("%s tryServeStaticGet - Static miss: req=%s decoded=%s mapped=%s\n", FILE_NAME_WEB, path, decodedPath, staticPath);
+    return false;
+  }
+
+  const char* contentType = getContentTypeForPath(resolvedPath);
+  DBG_VERBOSE("%s tryServeStaticGet - Static hit: req=%s decoded=%s resolved=%s type=%s\n", FILE_NAME_WEB, path, decodedPath, resolvedPath, contentType);
+  serveFile(client, resolvedPath, contentType);
+  return true;
+}
+
 void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* contentType) {
   if (!_sdcard) {
     DBG_VERBOSE("%s serveFile - SD Card not initialized for: %s\n", FILE_NAME_WEB, filepath);
@@ -597,7 +681,7 @@ void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* 
   }
 
   const char* resolvedPath = filepath;
-  char altPath[128] = {0};
+  char altPath[256] = {0};
   if (!_sdcard->fileExists(resolvedPath)) {
     if (filepath[0] != '/' && strlen(filepath) < sizeof(altPath) - 1) {
       altPath[0] = '/';
@@ -644,6 +728,7 @@ void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* 
   // Stream file content
   char buffer[128];
   size_t bytesSent = 0;
+  bool transferAborted = false;
   while (file.available()) {
     int len = file.read((uint8_t*)buffer, sizeof(buffer));
     if (len > 0) {
@@ -654,6 +739,7 @@ void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* 
         if (written == 0) {
           if (!client.connected() || (millis() - writeLastProgress) >= HTTP_WRITE_STALL_TIMEOUT_MS) {
             DBG_VERBOSE("%s serveFile - Client write stalled for: %s\n", FILE_NAME_WEB, filepath);
+            transferAborted = true;
             break;
           }
           delay(1);
@@ -665,6 +751,7 @@ void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* 
       }
 
       if (offset < len) {
+        transferAborted = true;
         break;
       }
     } else {
@@ -674,7 +761,7 @@ void WebServer::serveFile(WiFiClient& client, const char* filepath, const char* 
   }
 
   client.flush();
-  if (bytesSent != fileSize) {
+  if (bytesSent != fileSize || transferAborted) {
     DBG_VERBOSE("%s serveFile - WARNING: bytesSent(%lu) != fileSize(%lu) for %s\n", FILE_NAME_WEB, (unsigned long)bytesSent, (unsigned long)fileSize, filepath);
   }
 
